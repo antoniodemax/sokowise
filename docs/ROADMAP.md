@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.10 — expenses and financial overview implemented |
+| Status | Draft v0.11 — frontend foundation implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -280,13 +280,13 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 12 — Frontend implementation ☐
+## Phase 12 — Frontend implementation ◐ (foundation implemented 2026-09-16: design system, shell, auth screens, dashboard foundation)
 **Objective:** the mobile-first app.
 
 **Tasks**
-- Tailwind + shadcn/ui setup, router, providers, API client with token refresh, OpenAPI-generated types.
-- Screens: auth, onboarding checklist, Sell (default), Sales list/detail/void, Products, Inventory (restock/adjust/low stock), Customers (ledger, repayment), Expenses, Dashboard/analytics, Copilot chat (streaming), Settings/users, Audit log (simple list, OWNER).
-- Money and date formatting for KES / Nairobi time.
+- ☑ Tailwind + shadcn-style primitives, router, providers, API client with single-flight token refresh (ARCHITECTURE §4). ☐ OpenAPI-generated types (hand-written per feature for now).
+- Screens: ☑ auth (login, register, forced password change), ☑ dashboard foundation (summary metrics, period control, loading/empty/error states), ☑ settings (read-only), ☑ app shell with placeholders for every section; ☐ onboarding checklist, Sell (default), Sales list/detail/void, Products, Inventory (restock/adjust/low stock), Customers (ledger, repayment), Expenses, Analytics detail, Copilot chat (streaming), Settings editing/users, Audit log.
+- ☑ Money and date formatting for KES / business time (`lib/money.ts`, `lib/dates.ts`, tested).
 - PWA manifest.
 
 **Dependencies:** Phase 11 (backend stable). UI design decisions are made in this phase.

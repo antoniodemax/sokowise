@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** the business backend is complete for MVP — auth, tenants, catalogue, inventory, customers, credit, sales, expenses, analytics and CSV export of expenses; the frontend and the AI copilot are next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** the business backend is complete for MVP; the frontend foundation (branding, shell, auth, dashboard) is in place and the feature screens and AI copilot are next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 
@@ -16,7 +16,7 @@ AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, b
 
 ## Stack
 
-- **Frontend:** React 19, TypeScript, Vite (Tailwind CSS and shadcn/ui are added in Phase 12) — deployed on Vercel
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4, shadcn-style components on Radix, React Router, TanStack Query — deployed on Vercel
 - **Backend:** Python 3.12, FastAPI, Pydantic, pydantic-settings, SQLAlchemy 2.x (async, asyncpg), Alembic — deployed on Railway
 - **Database:** PostgreSQL 16 (Railway)
 - **Auth:** JWT access tokens + rotating refresh tokens in an HttpOnly cookie, Argon2id, roles from the membership row on every request
@@ -63,7 +63,8 @@ the backend refuses to start without one. The auth endpoints are listed in `back
 ```bash
 cd frontend
 npm ci
-npm run dev
+npm run dev          # proxies /api to the backend on :8000; leave VITE_API_BASE_URL empty locally
+npm test             # Vitest
 ```
 
 **Docker Compose** (PostgreSQL 16, plus the backend in a container):
@@ -80,7 +81,7 @@ Without Docker, any PostgreSQL 16 works: create a role and the `sokowise` / `sok
 
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && TEST_DATABASE_URL=postgresql+asyncpg://sokowise:sokowise@localhost:5432/sokowise_test uv run pytest
-cd frontend && npm run lint && npm run build
+cd frontend && npm run lint && npm test && npm run build
 docker compose config --quiet
 ```
 
