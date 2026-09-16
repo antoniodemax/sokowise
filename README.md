@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** Phase 5 (categories and products) implemented; inventory endpoints next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** Phase 6 customer slice (create/get/list/search) implemented; sales next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 

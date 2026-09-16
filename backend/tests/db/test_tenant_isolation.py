@@ -1,7 +1,7 @@
 """Every tenant-scoped endpoint, run through the isolation helper (ROADMAP Phase 4).
 
 To register a new resource type, add an `IsolationCase` to `CASES`. Registered:
-business members (Phase 4), categories and products (Phase 5).
+business members (Phase 4), categories and products (Phase 5), customers (Phase 6).
 """
 
 from http import HTTPStatus
@@ -18,6 +18,7 @@ pytestmark = [pytest.mark.db, pytest.mark.anyio]
 USERS_URL = "/api/v1/users"
 CATEGORIES_URL = "/api/v1/categories"
 PRODUCTS_URL = "/api/v1/products"
+CUSTOMERS_URL = "/api/v1/customers"
 
 
 async def _create_staff_member(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
@@ -53,6 +54,15 @@ async def _create_product(api: AsyncClient, session: AsyncSession, tenant: Tenan
     assert response.status_code == HTTPStatus.CREATED, response.text
     product_id: str = response.json()["id"]
     return product_id
+
+
+async def _create_customer(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
+    response = await api.post(
+        CUSTOMERS_URL, headers=tenant.owner, json={"name": "Mama Njeri", "phone": "0712345678"}
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    customer_id: str = response.json()["id"]
+    return customer_id
 
 
 CASES: list[IsolationCase] = [
@@ -91,6 +101,13 @@ CASES: list[IsolationCase] = [
             ("PATCH", lambda product_id: f"{PRODUCTS_URL}/{product_id}", {"selling_price": "1"}),
             ("PATCH", lambda product_id: f"{PRODUCTS_URL}/{product_id}", {"is_active": False}),
         ),
+    ),
+    IsolationCase(
+        name="customers",
+        create_in=_create_customer,
+        read_url=lambda customer_id: f"{CUSTOMERS_URL}/{customer_id}",
+        # Search by the exact phone must not surface another tenant's customer either.
+        list_url=f"{CUSTOMERS_URL}?include_archived=true&q=0712345678",
     ),
 ]
 

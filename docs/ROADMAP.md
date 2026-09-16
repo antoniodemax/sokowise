@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.5 — Phase 5 (catalogue half) implemented |
+| Status | Draft v0.6 — Phase 6 (customers slice) implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -153,13 +153,13 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 6 — Sales and payments ☐
+## Phase 6 — Sales and payments ◐ (customers create/get/list/search implemented 2026-09-16; sales pending)
 **Objective:** record and void sales with split payments, including the customer records a credit sale needs.
 
 **Tasks**
 - `POST /sales` (idempotency key, lines, payments, optional customer, optional backdate for OWNER); `GET /sales`, `GET /sales/{id}`, `POST /sales/{id}/void`.
 - Single-transaction creation per DATA_MAPPING §6; stock validation; price override recording; discount validation; BR-1 enforcement.
-- Customers: create, get, list, search (name/phone) — the minimum a credit sale needs. Archive, PII scrub, repayments, adjustments, ledger view and debtors move to Phase 7.
+- ☑ Customers: create, get, list, search (name/phone) — the minimum a credit sale needs (ARCHITECTURE §5.7; `tests/db/test_customers_api.py`, isolation case `customers`, phone race in `test_catalog_concurrency.py`; 405 tests pass locally). No schema change; no audit on creation. Archive, PII scrub, repayments, adjustments, ledger view and debtors move to Phase 7.
 - CREDIT payment lines create `CHARGE` ledger entries and update `customers.balance` inside the sale transaction; void writes the `REVERSAL`. The rest of the credit module (repayments, adjustments, limits) is Phase 7.
 - Sale-level discount allocated to lines (`sale_items.discount_allocated`, BR-14) with largest-remainder rounding.
 - Idempotency: store `idempotency_hash`; same key + same payload → 200 with the original; same key + different payload → 409.

@@ -441,6 +441,12 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - The SKU and barcode unique indexes are not partial on `is_active`, so an archived product keeps its SKU/barcode reserved; only the *name* is freed by archiving (partial index `WHERE is_active`).
 - `audit_logs.action` values added: `product.price_change`, `product.archive`, `product.unarchive`; `entity_type` `product`; Decimal values in `before`/`after` are stored as strings.
 
+### 9.4 Phase 6 notes (customers; no schema change)
+
+- `customers.phone` is stored in E.164 via the same normalisation as `users.phone`; the partial unique index `uq_customers_business_id_phone` is the only duplicate rule (per business, only when a phone is present).
+- `customers.balance` is written only by ledger code (none yet); the API returns it read-only and never accepts it.
+- Search uses the existing `(business_id, name)` index for ordering; the name match is a substring and the phone match a prefix/contains LIKE — acceptable for MVP customer counts (tens to low hundreds per business). A trigram index is the upgrade path if search ever slows.
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.

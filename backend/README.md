@@ -55,6 +55,14 @@ Catalogue (members read, OWNER writes; docs/ARCHITECTURE.md §5.6):
 | `POST /api/v1/products` | create; optional `opening_stock` + `opening_unit_cost` write the INITIAL movement atomically |
 | `GET/PATCH /api/v1/products/{id}` | read; update fields, reprice (audited), archive with `{"is_active": false}` |
 
+Customers (members read and create; docs/ARCHITECTURE.md §5.7):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/customers?q=&include_archived=&limit=` | list; `q` matches part of the name or a phone in any local form |
+| `POST /api/v1/customers` | create (name, optional phone/notes/credit_limit); duplicate phone in the business → 409 |
+| `GET /api/v1/customers/{id}` | one customer, with the read-only ledger `balance` |
+
 Money and quantities are decimal strings in JSON (`"150.00"`, `"12.500"`).
 
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
@@ -103,12 +111,13 @@ app/
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
 ├── schemas/           Pydantic request/response models (auth), identifier normalisation
 ├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs,
-│                      categories, products, inventory movements)
+│                      categories, products, inventory movements, customers)
 ├── services/          transactions and rules (auth, business, members, audit, categories,
-│                      products, inventory primitive)
+│                      products, inventory primitive, customers)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
-                       v1/ (routers mounted at /api/v1: auth, business, users, categories, products)
+                       v1/ (routers mounted at /api/v1: auth, business, users, categories,
+                       products, customers)
 alembic/               migrations (async env); alembic.ini holds no URL
 tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api`/`tenants` fixtures;
                        register tenant-scoped endpoints in tests/db/test_tenant_isolation.py)

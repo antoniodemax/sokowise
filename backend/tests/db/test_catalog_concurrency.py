@@ -1,4 +1,4 @@
-"""Racing creates with the same name/SKU: the unique indexes decide (DATA_MAPPING §3.5-§3.6).
+"""Racing creates with the same name/SKU/phone: the unique indexes decide (DATA_MAPPING §3.5-§3.8).
 
 Real commits on separate connections; rows are cleaned up afterwards.
 """
@@ -42,7 +42,13 @@ async def committed_api(engine: AsyncEngine) -> AsyncIterator[AsyncClient]:
         async with engine.begin() as connection:
             params = {"name": BUSINESS_NAME, "prefix": PHONE_PREFIX + "%"}
             business = "(SELECT id FROM businesses WHERE name = :name)"
-            for table in ("inventory_movements", "audit_logs", "products", "categories"):
+            for table in (
+                "inventory_movements",
+                "audit_logs",
+                "products",
+                "categories",
+                "customers",
+            ):
                 await connection.execute(
                     text(f"DELETE FROM {table} WHERE business_id IN {business}"),  # noqa: S608
                     params,
@@ -180,3 +186,32 @@ async def test_concurrent_product_creates_with_one_name_yield_one_row(
     assert {r.json()["error"]["code"] for r in results if r.status_code == HTTPStatus.CONFLICT} == {
         "PRODUCT_NAME_EXISTS"
     }
+
+
+async def test_concurrent_customer_creates_with_one_phone_yield_one_row(
+    committed_api: AsyncClient, engine: AsyncEngine
+) -> None:
+    """The partial unique index on (business_id, phone) settles the race (DATA_MAPPING §3.8)."""
+    api = committed_api
+    owner = bearer(
+        (await register(api, phone=PHONE_PREFIX + "000004", business_name=BUSINESS_NAME)).json()[
+            "access_token"
+        ]
+    )
+    results = await _race(
+        api, "POST", "/api/v1/customers", owner, {"name": "Amina", "phone": "0712 000 999"}
+    )
+    statuses = sorted(r.status_code for r in results)
+    assert statuses == [HTTPStatus.CREATED, HTTPStatus.CONFLICT, HTTPStatus.CONFLICT], statuses
+    assert {r.json()["error"]["code"] for r in results if r.status_code == HTTPStatus.CONFLICT} == {
+        "CUSTOMER_PHONE_EXISTS"
+    }
+    async with engine.connect() as connection:
+        count = await connection.scalar(
+            text(
+                "SELECT count(*) FROM customers WHERE business_id = "
+                "(SELECT id FROM businesses WHERE name = :name)"
+            ),
+            {"name": BUSINESS_NAME},
+        )
+    assert count == 1
