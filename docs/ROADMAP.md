@@ -280,12 +280,13 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 12 — Frontend implementation ◐ (foundation implemented 2026-09-16: design system, shell, auth screens, dashboard foundation)
+## Phase 12 — Frontend implementation ◐ (foundation 2026-09-16; core business workflows 2026-09-16)
 **Objective:** the mobile-first app.
 
 **Tasks**
 - ☑ Tailwind + shadcn-style primitives, router, providers, API client with single-flight token refresh (ARCHITECTURE §4). ☐ OpenAPI-generated types (hand-written per feature for now).
-- Screens: ☑ auth (login, register, forced password change), ☑ dashboard foundation (summary metrics, period control, loading/empty/error states), ☑ settings (read-only), ☑ app shell with placeholders for every section; ☐ onboarding checklist, Sell (default), Sales list/detail/void, Products, Inventory (restock/adjust/low stock), Customers (ledger, repayment), Expenses, Analytics detail, Copilot chat (streaming), Settings editing/users, Audit log.
+- Screens: ☑ auth (login, register, forced password change), ☑ dashboard (summary metrics, period control, quick actions, low stock, top debtors), ☑ Sell (cart, split tenders, discount, customer with credit info, OWNER credit-limit override, OWNER backdating, idempotent submit), ☑ Sales list/detail/void, ☑ Products (list/search/filter/archive, create/edit, categories, detail with movements), ☑ Inventory (low stock, movements with filters, restock/adjust/opening stock), ☑ Customers (list/search/create, debtors, detail with ledger, repayment, OWNER adjustment), ☑ Expenses (list/filters/create/edit/soft delete/CSV export), ☑ Analytics (summary, tender split, time series chart, products, categories, expenses breakdown, slow products, missing-cost warnings), ☑ Settings (business profile and settings, team management, change password); ☐ onboarding checklist, Copilot chat (streaming), Audit log, customer edit/archive (no backend endpoint yet — PRD §19).
+- ☑ Vitest coverage per workflow with network-boundary mocks (`src/test/render.tsx`): 52 tests.
 - ☑ Money and date formatting for KES / business time (`lib/money.ts`, `lib/dates.ts`, tested).
 - PWA manifest.
 

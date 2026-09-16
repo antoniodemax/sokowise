@@ -55,6 +55,12 @@ export const sessionStore = {
     listeners.forEach((listener) => listener(current))
     return current
   },
+  /** Reflect an edited business profile without a new login (the token is unchanged). */
+  updateBusiness(patch: Partial<SessionBusiness>): void {
+    if (!current) return
+    current = { ...current, business: { ...current.business, ...patch } }
+    listeners.forEach((listener) => listener(current))
+  },
   clear(): void {
     accessToken = null
     current = null

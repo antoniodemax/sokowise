@@ -11,8 +11,17 @@ const LoginPage = lazy(() => import('@/features/auth/LoginPage'))
 const RegisterPage = lazy(() => import('@/features/auth/RegisterPage'))
 const ChangePasswordPage = lazy(() => import('@/features/auth/ChangePasswordPage'))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
+const SalesPage = lazy(() => import('@/features/sales/SalesPage'))
+const SellPage = lazy(() => import('@/features/sales/SellPage'))
+const SaleDetailPage = lazy(() => import('@/features/sales/SaleDetailPage'))
+const ProductsPage = lazy(() => import('@/features/products/ProductsPage'))
+const ProductDetailPage = lazy(() => import('@/features/products/ProductDetailPage'))
+const InventoryPage = lazy(() => import('@/features/inventory/InventoryPage'))
+const CustomersPage = lazy(() => import('@/features/customers/CustomersPage'))
+const CustomerDetailPage = lazy(() => import('@/features/customers/CustomerDetailPage'))
+const ExpensesPage = lazy(() => import('@/features/expenses/ExpensesPage'))
+const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'))
-const ComingSoonPage = lazy(() => import('@/features/placeholders/ComingSoonPage'))
 const NotFoundPage = lazy(() => import('@/features/placeholders/NotFoundPage'))
 
 function PageFallback() {
@@ -40,13 +49,17 @@ export function AppRouter() {
             </Route>
             <Route element={<AppShell />}>
               <Route index element={<DashboardPage />} />
-              <Route path="/sales" element={<ComingSoonPage section="Sales" />} />
-              <Route path="/products" element={<ComingSoonPage section="Products" />} />
-              <Route path="/inventory" element={<ComingSoonPage section="Inventory" />} />
-              <Route path="/customers" element={<ComingSoonPage section="Customers" />} />
+              <Route path="/sales" element={<SalesPage />} />
+              <Route path="/sales/new" element={<SellPage />} />
+              <Route path="/sales/:saleId" element={<SaleDetailPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/products/:productId" element={<ProductDetailPage />} />
+              <Route path="/inventory" element={<InventoryPage />} />
+              <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/customers/:customerId" element={<CustomerDetailPage />} />
               <Route element={<RequireOwner />}>
-                <Route path="/expenses" element={<ComingSoonPage section="Expenses" />} />
-                <Route path="/analytics" element={<ComingSoonPage section="Analytics" />} />
+                <Route path="/expenses" element={<ExpensesPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
               </Route>
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFoundPage />} />

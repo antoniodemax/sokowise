@@ -1,16 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
-import { Banknote, HandCoins, Receipt, ShoppingCart, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, Banknote, HandCoins, Package, Plus, Receipt, ShoppingCart, TrendingUp, UserRound, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { Alert } from '@/components/ui/alert'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/features/auth/auth-context'
+import { useDebtors } from '@/features/customers/hooks'
+import { useLowStock } from '@/features/inventory/hooks'
 import { formatCalendarDate } from '@/lib/dates'
-import { formatKsh } from '@/lib/money'
+import { formatKsh, formatQuantity } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 import { dashboardApi, type AnalyticsSummary, type DashboardPeriod } from './api'
@@ -33,7 +37,7 @@ function PeriodControl({ value, onChange }: { value: DashboardPeriod; onChange: 
           aria-checked={value === period.value}
           onClick={() => onChange(period.value)}
           className={cn(
-            'min-h-9 flex-1 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors sm:flex-none',
+            'min-h-11 flex-1 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors sm:min-h-9 sm:flex-none',
             value === period.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
         >
@@ -82,7 +86,7 @@ function MetricSkeleton() {
   )
 }
 
-function Metrics({ summary }: { summary: AnalyticsSummary }) {
+export function Metrics({ summary }: { summary: AnalyticsSummary }) {
   const net = summary.net_profit.startsWith('-') ? 'negative' : 'positive'
   const missing = summary.lines_missing_cost > 0
   return (
@@ -94,6 +98,78 @@ function Metrics({ summary }: { summary: AnalyticsSummary }) {
       <MetricCard label="Expenses" value={formatKsh(summary.expenses)} icon={<Receipt />} hint="Money spent in this period" />
       <MetricCard label="Net profit" value={formatKsh(summary.net_profit)} icon={<ShoppingCart />} hint="Gross profit minus expenses" tone={net} />
     </div>
+  )
+}
+
+function QuickActions() {
+  return (
+    <div className="flex flex-wrap gap-2" aria-label="Quick actions">
+      <Link to="/sales/new" className={buttonVariants()}><ShoppingCart aria-hidden="true" /> New sale</Link>
+      <Link to="/products" className={buttonVariants({ variant: 'outline' })}><Package aria-hidden="true" /> Products</Link>
+      <Link to="/customers" className={buttonVariants({ variant: 'outline' })}><UserRound aria-hidden="true" /> Customers</Link>
+    </div>
+  )
+}
+
+function LowStockCard() {
+  const lowStock = useLowStock()
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><AlertTriangle className="size-4 text-warning" aria-hidden="true" /> Running low</CardTitle>
+        <CardDescription>Products at or below their low-stock alert.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {lowStock.isPending ? (
+          <div className="space-y-2" aria-busy="true"><Skeleton className="h-5" /><Skeleton className="h-5" /></div>
+        ) : lowStock.isError ? (
+          <ErrorState error={lowStock.error} title="Could not check stock" onRetry={() => lowStock.refetch()} />
+        ) : lowStock.data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing is running low.</p>
+        ) : (
+          <ul className="divide-y divide-border text-sm">
+            {lowStock.data.slice(0, 6).map((p) => (
+              <li key={p.product_id} className="flex items-center justify-between gap-3 py-2">
+                <Link to={`/products/${p.product_id}`} className="min-w-0 truncate font-medium hover:underline">{p.name}</Link>
+                <span className="tabular shrink-0 text-warning">{formatQuantity(p.stock_quantity)} {p.unit} left</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {lowStock.data && lowStock.data.length > 6 && <Link to="/inventory" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">See all {lowStock.data.length}</Link>}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DebtorsCard() {
+  const debtors = useDebtors('balance')
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><HandCoins className="size-4 text-warning" aria-hidden="true" /> Who owes you most</CardTitle>
+        <CardDescription>Outstanding credit, largest first.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {debtors.isPending ? (
+          <div className="space-y-2" aria-busy="true"><Skeleton className="h-5" /><Skeleton className="h-5" /></div>
+        ) : debtors.isError ? (
+          <ErrorState error={debtors.error} title="Could not load debtors" onRetry={() => debtors.refetch()} />
+        ) : debtors.data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nobody owes you money.</p>
+        ) : (
+          <ul className="divide-y divide-border text-sm">
+            {debtors.data.slice(0, 5).map((d) => (
+              <li key={d.customer_id} className="flex items-center justify-between gap-3 py-2">
+                <Link to={`/customers/${d.customer_id}`} className="min-w-0 truncate font-medium hover:underline">{d.name}</Link>
+                <span className="tabular shrink-0 font-semibold text-warning">{formatKsh(d.balance)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {debtors.data && debtors.data.length > 5 && <Link to="/customers?view=debtors" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">See all {debtors.data.length}</Link>}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -117,13 +193,18 @@ export default function DashboardPage() {
         description={isOwner ? (range ? `How ${session?.business.name} is doing · ${range}` : `How ${session?.business.name} is doing`) : `${session?.business.name}`}
         actions={isOwner ? <PeriodControl value={period} onChange={setPeriod} /> : undefined}
       />
+      <div className="mb-4"><QuickActions /></div>
       {!isOwner ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Your day starts here</CardTitle>
-            <CardDescription>Sales, products and customers are in the menu. Business figures are shown to the owner.</CardDescription>
-          </CardHeader>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your day starts here</CardTitle>
+              <CardDescription>Record sales, add customers and check stock from the menu. Business figures are shown to the owner.</CardDescription>
+            </CardHeader>
+            <CardContent><Link to="/sales/new" className={buttonVariants({ size: 'lg' })}><Plus aria-hidden="true" /> Record a sale</Link></CardContent>
+          </Card>
+          <LowStockCard />
+        </div>
       ) : query.isPending ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading figures">
           {Array.from({ length: 6 }, (_, i) => (
@@ -133,15 +214,19 @@ export default function DashboardPage() {
       ) : query.isError || !summary ? (
         <ErrorState error={query.error} title="Could not load your figures" onRetry={() => query.refetch()} />
       ) : summary.sales_count === 0 && summary.expenses === '0.00' && summary.receivables_outstanding === '0.00' ? (
-        <EmptyState icon={ShoppingCart} title="Nothing recorded yet" description="Once you record sales and expenses, this dashboard shows your revenue, cash collected, profit and what customers owe." />
+        <div className="space-y-4">
+          <EmptyState icon={ShoppingCart} title="Nothing recorded yet" description="Once you record sales and expenses, this dashboard shows your revenue, cash collected, profit and what customers owe." />
+          <div className="grid gap-4 md:grid-cols-2"><LowStockCard /><DebtorsCard /></div>
+        </div>
       ) : (
         <div className="space-y-4">
           {summary.products_missing_cost > 0 && (
             <Alert variant="warning" title="Profit is understated">
-              {summary.products_missing_cost} {summary.products_missing_cost === 1 ? 'product has' : 'products have'} no cost price, so their sales count as pure profit. Add cost prices under Products to see the real margin.
+              {summary.products_missing_cost} {summary.products_missing_cost === 1 ? 'product has no cost price, so its' : 'products have no cost price, so their'} sales count as pure profit. Add cost prices under Products to see the real margin.
             </Alert>
           )}
           <Metrics summary={summary} />
+          <div className="grid gap-4 md:grid-cols-2"><LowStockCard /><DebtorsCard /></div>
         </div>
       )}
     </>
