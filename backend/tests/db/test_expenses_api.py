@@ -439,8 +439,14 @@ async def test_csv_export_is_deterministic_filtered_and_isolated(
         payment_method="CASH",
         incurred_at=_at(d1, 17, 45),
     )
+    # A recent row that is only there to be deleted: an hour ago is safely in the past
+    # whatever the local time of day (08:00 today would be in the future before 08:00).
     deleted = await _create(
-        api, a.owner, category="Airtime", amount="50", incurred_at=_at(today, 8, 0)
+        api,
+        a.owner,
+        category="Airtime",
+        amount="50",
+        incurred_at=(datetime.now(UTC) - timedelta(hours=1)).isoformat(),
     )
     await api.delete(f"{URL}/{deleted['id']}", headers=a.owner)
     await _create(api, b.owner, category="Rent", amount="999", note="Beta")
