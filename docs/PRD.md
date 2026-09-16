@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.1 — Phase 0 (product discovery) |
+| Status | Draft v0.2 — Phase 0 (product discovery; architecture review fixes A–M applied) |
 | Owner | Product / Engineering |
 | Last updated | 2026-09-16 |
 | Related docs | [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) |
@@ -155,7 +155,7 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-B6. Password reset — **OPEN QUESTION** (see §19): MVP ships owner-initiated staff password reset; self-service reset requires an SMS/email provider not yet chosen.
 
 ### FR-C Users & roles
-- FR-C1. OWNER can invite/create a STAFF user for their business (name, phone, initial password).
+- FR-C1. OWNER can create a STAFF user for their business (name, phone, initial password). The new user has `must_change_password=true` and must set a new password at first login before any other endpoint is available. If the phone number already belongs to a user, creation returns 409 (one business per user in MVP, FR-A4).
 - FR-C2. OWNER can deactivate a STAFF user; deactivated users cannot authenticate.
 - FR-C3. Permission matrix in §16 is enforced by the backend on every request.
 
@@ -165,9 +165,10 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-D3. Products referenced by sales cannot be hard-deleted; they are archived (is_active=false).
 - FR-D4. Categories are simple per-business labels.
 - FR-D5. Search products by name/SKU/barcode with prefix matching for fast sale entry.
+- FR-D6. Product creation may include `opening_stock` and `opening_unit_cost`. When present, the product and its `INITIAL` inventory movement are written in one transaction. When absent, `stock_quantity` starts at 0 and stock is added later through a restock or `INITIAL` movement. `stock_quantity` is never set directly.
 
 ### FR-E Inventory
-- FR-E1. Every stock change is an inventory movement (RESTOCK, SALE, SALE_REVERSAL, ADJUSTMENT, INITIAL) with quantity delta, unit cost where applicable, reason, and actor.
+- FR-E1. Every stock change is an inventory movement (RESTOCK, SALE, SALE_REVERSAL, ADJUSTMENT, INITIAL) with quantity delta, unit cost where applicable, reason, and actor. Products with `track_inventory=false` (services) write no movements and skip stock validation; their sale lines still snapshot `unit_cost` when it is known.
 - FR-E2. Product on-hand quantity equals the sum of its movements; the denormalised value on the product is updated in the same transaction.
 - FR-E3. A sale of a tracked product that would make stock negative is rejected with a clear error. **ASSUMPTION:** blocking is the right default; the pilot will test whether "allow with warning" is needed.
 - FR-E4. Low-stock list: tracked, active products with on-hand ≤ threshold.
@@ -179,8 +180,8 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-F3. Unit price may be overridden per line at sale time; the product's default price is recorded alongside.
 - FR-F4. Sale-level discount amount (≥ 0, ≤ subtotal).
 - FR-F5. Each sale line snapshots product name, unit price and unit cost at the time of sale so later product edits do not change history.
-- FR-F6. Sale creation is idempotent via a client-supplied idempotency key (UUID), so a retried request on a flaky network does not double-record.
-- FR-F7. Sales are immutable once completed. Corrections are made by voiding (OWNER only, with reason), which reverses stock and credit effects.
+- FR-F6. Sale creation is idempotent via a client-supplied idempotency key (UUID), so a retried request on a flaky network does not double-record. A retry with the same key and the same payload returns the original sale (200). The same key with a different payload returns 409 CONFLICT.
+- FR-F7. Sales are immutable once completed. Corrections are made by voiding (OWNER only, with reason), which reverses stock and credit effects. Reversal movements are written even when the product has since been archived.
 - FR-F8. Sale timestamp defaults to now but may be backdated by OWNER (e.g. entering yesterday's sales) within a configurable window (default 7 days).
 - FR-F9. A sale may optionally be linked to a customer even when not on credit.
 
@@ -197,8 +198,16 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-H3. OWNER may edit or delete an expense; changes are audited.
 
 ### FR-I Analytics
-- FR-I1. Summary for a period (today, yesterday, this week, this month, custom range, in business timezone): sales count, revenue, discounts, COGS, gross profit, expenses, net profit, cash vs M-Pesa vs credit split.
-- FR-I2. Top products by quantity and by revenue and by gross profit.
+- FR-I1. Summary for a period (today, yesterday, this week, this month, custom range, in business timezone) with these defined metrics (BR-15, BR-16):
+  - `sales_count`: COMPLETED sales with `sold_at` in the period.
+  - `revenue` (accrual): Σ `sales.total_amount` of those sales. Includes amounts sold on credit.
+  - `discounts`: Σ `sales.discount_amount`.
+  - `cogs`: Σ `sale_items.quantity × unit_cost` over lines with a known cost.
+  - `lines_missing_cost` and `products_missing_cost`: how many lines, and how many distinct products, had no `unit_cost` and therefore contributed 0 to COGS.
+  - `gross_profit` = revenue − cogs; `expenses` = Σ non-deleted expenses with `incurred_at` in the period; `net_profit` = gross_profit − expenses.
+  - `tender_split`: Σ `payments.amount` by method (CASH, MPESA, CREDIT) for those sales.
+  - `cash_collected`: Σ CONFIRMED `payments.amount` where method is CASH or MPESA for sales in the period, plus Σ credit `REPAYMENT` amounts with `occurred_at` in the period, reported by method. CREDIT tenders are excluded.
+- FR-I2. Top products by quantity, by revenue (Σ `line_total − discount_allocated`), and by gross profit (Σ `line_total − discount_allocated − quantity × unit_cost`, lines with unknown cost flagged). Because discount is allocated to lines at sale time (BR-14), the sum of product gross profit equals period gross profit.
 - FR-I3. Slow products: active tracked products with no sales in N days (default 30) and stock on hand.
 - FR-I4. Low-stock products.
 - FR-I5. Outstanding credit total and debtors list.
@@ -283,7 +292,7 @@ Format: As a *role*, I want *X*, so that *Y*. Priority: M (must), S (should), C 
 
 ### J5. Asking the copilot
 1. Owner opens Copilot, types "Ni bidhaa gani zimeuzwa zaidi wiki hii?" (which products sold most this week).
-2. Backend authenticates, loads the conversation, sends the message plus tool definitions to Claude. Claude calls `get_top_products(period="this_week")`. Backend executes it scoped to the business, returns validated JSON. Claude answers in Swahili with the figures. Backend validates the response shape, stores it with the tool results, streams to the client.
+2. Backend authenticates, loads the conversation, sends the message plus tool definitions to Claude. Claude calls `get_top_products(period="this_week")`. Backend executes it scoped to the business, returns validated JSON. Claude answers in Swahili with the figures. The backend streams the answer to the client as it arrives, then runs guardrails over the full response and stores it with the tool results (ARCHITECTURE §6.1).
 
 ### J6. Voiding a mistake
 1. Owner opens Sales → today → tap the wrong sale → Void → reason → confirm.
@@ -297,15 +306,18 @@ Format: As a *role*, I want *X*, so that *Y*. Priority: M (must), S (should), C 
 | BR-2 | A CREDIT payment line requires a customer on the sale. |
 | BR-3 | Sales are never edited or deleted after completion; only voided. Voiding is OWNER-only and reverses all side effects. |
 | BR-4 | Stock for tracked products cannot go below zero via a sale. Adjustments may set any non-negative value with a reason. |
-| BR-5 | Sale lines snapshot `unit_cost` from the product at sale time; COGS = Σ(quantity × unit_cost). |
+| BR-5 | Sale lines snapshot `unit_cost` from the product at sale time; COGS = Σ(quantity × unit_cost) over lines with a known cost. Lines with unknown cost contribute 0 and are counted in `lines_missing_cost` (BR-16). |
 | BR-6 | Restocks are inventory events (asset), not expenses. Gross profit = revenue − COGS. Net profit = gross profit − operating expenses. A separate "cash movement" view may show restock spend as cash out. This prevents double-counting stock cost. |
 | BR-7 | Customer balance = Σ ledger amounts (CHARGE and ADJUSTMENT(+) increase; REPAYMENT, REVERSAL and ADJUSTMENT(−) decrease). Balance may go negative (customer prepaid / over-repaid); UI labels this as "credit in favour". |
 | BR-8 | Voiding a credit sale writes a REVERSAL for the original CHARGE amount even if repayments have occurred; the resulting balance is whatever the ledger says. |
-| BR-9 | Money is rounded half-up to 2 dp at line level; totals are sums of rounded lines. |
+| BR-9 | Money is rounded half-up to 2 dp at line level; totals are sums of rounded lines. Discount allocation (BR-14) uses largest-remainder rounding so the allocations sum exactly to `discount_amount`. |
 | BR-10 | All "today / this week / this month" computations use the business's timezone. |
 | BR-11 | A product's `stock_quantity` column is a cache of the movement ledger and is updated only inside the same DB transaction as the movement. |
 | BR-12 | Deactivated users, archived products, and archived customers remain in history and analytics. |
 | BR-13 | The AI copilot has read-only access to business data through named tools; it cannot create, update or delete records in MVP. |
+| BR-14 | A sale-level discount is allocated to sale lines at sale time, pro-rata by `line_total`, and stored as `sale_items.discount_allocated`. Σ `discount_allocated` = `sales.discount_amount`. Product-level revenue and profit use `line_total − discount_allocated`, so product figures reconcile to period figures. |
+| BR-15 | *Revenue* is accrual: Σ `total_amount` of COMPLETED sales by `sold_at`, including credit sales. *Cash collected* is money received: CONFIRMED CASH and MPESA tenders on sales plus credit REPAYMENTs. A CREDIT tender is a receivable, never cash received; it appears in outstanding credit until repaid. Repayments are never revenue (the revenue was recognised at the sale). |
+| BR-16 | Profit figures are never silently understated. Any calculation that skips a line for lack of cost reports `lines_missing_cost` and `products_missing_cost` alongside the number, and the UI and copilot show this to the owner. |
 
 ## 16. Roles and permissions
 
@@ -323,6 +335,7 @@ MVP roles: **OWNER**, **STAFF**. (MANAGER is reserved for the future.)
 | Void sale | ✔ | ✖ |
 | View sales list | ✔ (all) | ✔ (own sales, today) |
 | Create / edit customers, record repayment | ✔ | ✔ |
+| View customer balance and ledger | ✔ | ✔ (needed to record repayments and explain the balance to the customer) |
 | Adjust customer balance manually | ✔ | ✖ |
 | Record expenses | ✔ | ✖ |
 | View analytics / profit | ✔ | ✖ |
@@ -337,8 +350,8 @@ All checks are enforced server-side; the frontend only hides what the user canno
 The MVP is accepted when all of the following pass:
 
 1. A new user can register, create a business, add a product, and record a cash sale in a mobile browser without assistance.
-2. Automated tests prove that a user of Business A receives 404/403 for every tenant-scoped resource of Business B (list, get, update, delete, analytics, AI tools).
-3. Sale creation with an existing idempotency key returns the original sale and does not duplicate stock movements or credit charges.
+2. Automated tests prove that a user of Business A receives 404 for every tenant-scoped resource of Business B (list, get, update, delete, analytics, AI tools). 403 is reserved for role denials within the user's own business.
+3. Sale creation with an existing idempotency key and the same payload returns the original sale and does not duplicate stock movements or credit charges; the same key with a different payload returns 409.
 4. Voiding a credit sale restores stock and reverses the customer's balance; the audit log records actor and reason.
 5. A period summary matches a hand-computed expectation on a fixture data set (revenue, COGS, gross profit, expenses, net).
 6. The copilot answers the six reference questions in §20 correctly on the fixture data set, in both English and Swahili, and refuses/declines gracefully on out-of-scope requests ("delete all my sales").
@@ -360,7 +373,7 @@ Pilot targets (first 8 weeks with ~10–20 businesses):
 | Copilot use: businesses asking ≥ 3 questions per week | ≥ 40% |
 | Copilot accuracy on the internal eval set | ≥ 95% numeric correctness |
 | Owner-reported "I know my profit now" (survey) | ≥ 70% agree |
-| AI cost per active business per month | ≤ KSh 150 equivalent (to be validated against pricing) |
+| AI cost per active business per month | ≤ KSh 150 equivalent. The quota in AI-8 is set to keep a business at quota under this figure; verified against current pricing and measured usage at the start of Phase 9 (AI-12). |
 
 ## 19. Risks and assumptions
 
@@ -373,7 +386,7 @@ Pilot targets (first 8 weeks with ~10–20 businesses):
 | Prompt injection via product/customer names. | AI misbehaviour, data leakage across conversation. | Treat all business data as untrusted content in prompts; tools are read-only and tenant-scoped; no cross-tenant tools exist. |
 | Tenant isolation bug. | Catastrophic, legal exposure. | business_id on every tenant table, repository-level scoping, mandatory isolation tests, optional Postgres RLS in hardening phase. |
 | Intermittent connectivity leads to duplicate or lost sales. | Trust. | Idempotency keys; clear pending/failed state in UI; offline queue post-MVP. |
-| AI cost outruns revenue. | Unit economics. | Per-business quotas, prompt caching, model selection per task, cost dashboard. |
+| AI cost outruns revenue. | Unit economics. | Conservative server-side quotas (AI-8) that owners cannot raise, prompt caching with verified cache hits, pricing and cost measured at the start of Phase 9 before quotas are relaxed, cost dashboard. |
 | Password reset without SMS/email provider. | Support burden. | Owner-resets-staff in MVP; pick provider before public launch. |
 | Regulatory (DPA 2019, eTIMS). | Compliance. | PII minimisation, privacy notice, ODPC registration plan; eTIMS designed-for but not built. |
 | Solo-developer bandwidth. | Schedule. | Strict MVP scope; roadmap phases with completion criteria; no premature features. |
@@ -386,7 +399,7 @@ Pilot targets (first 8 weeks with ~10–20 businesses):
 - A5. Phone number is the preferred login identifier.
 - A6. English UI with Swahili-capable copilot is sufficient for the pilot.
 - A7. The six copilot questions are the ones owners actually ask; discover the real top 10.
-- A8. Staff will use their own phones rather than a shared shop device (affects session length and logout behaviour).
+- A8. Staff will use their own phones rather than a shared shop device (affects session length and logout behaviour). How a shared device is handled (idle timeout, shorter refresh lifetime, explicit "shared device" login) is a deferred decision for Phase 3 (ROADMAP); the MVP default until then is the standard 30-day refresh token.
 - A9. Owners are willing to pay a monthly subscription in the KSh 300–1,000 range (pricing not yet decided; MVP is free for pilot).
 
 ## 20. AI-specific requirements
@@ -400,6 +413,8 @@ Reference questions the copilot must answer from tools:
 5. "Which products are not selling?" → `get_slow_products`
 6. "Which products generate the most profit?" → `get_top_products(by="profit")`
 
+Questions about a named customer ("how much does Mary owe?") resolve the customer through `search_customers`, then `get_customer_ledger`. `get_debtors` also returns `customer_id` for each row.
+
 Requirements:
 
 - AI-1. Model access only through the backend's `ai` module; the frontend never holds an Anthropic key.
@@ -407,12 +422,12 @@ Requirements:
 - AI-3. Tools are read-only in MVP and return bounded result sets (e.g. max 50 rows) with explicit units and currency.
 - AI-4. System prompt states the business name, currency, timezone, today's date (in business tz), the user's role, and the language policy (answer in the user's language; Swahili and English supported). Volatile fields go after the cached stable prefix.
 - AI-5. Business data (product names, customer names, notes) is inserted only as tool results, never as instructions; the system prompt tells the model to treat it as data.
-- AI-6. The backend validates every model response: content type, length limit, no tool calls outside the allowlist, no leaked system prompt; on failure, return a safe fallback message.
+- AI-6. The backend validates every model response once streaming completes: content blocks are text or allowed tool calls only, no leaked system prompt, tool inputs pass their schemas. Output length is bounded by `max_tokens`, never by cutting text after the fact. Correctness of the figures in an answer is verified by the eval set (AI-11); runtime logic records which tool results backed the answer but does not prove the arithmetic.
 - AI-7. Every stored assistant message records the model ID, token usage, the tool calls made and their results (for audit and eval).
-- AI-8. Quotas: default 50 messages/business/day, configurable; global monthly spend cap with alerting.
+- AI-8. Quotas: default 10 user messages per business per day and 100 per calendar month, held in server-side configuration (`AI_DAILY_MESSAGE_LIMIT`, `AI_MONTHLY_MESSAGE_LIMIT`). Business owners cannot change these limits; they are operator settings. A global monthly spend cap alerts at 80% and stops at 100%. The defaults are deliberately conservative and are re-tuned in Phase 9 from measured cost (AI-12).
 - AI-9. Latency: stream responses; first token target ≤ 3 s.
 - AI-10. Safety: the model must decline requests to change data, to reveal other businesses' data, or to act outside business analysis; these cases are in the eval set.
 - AI-11. An eval set (fixture business + question/expected-answer pairs) exists before Phase 9 is complete and runs in CI against recorded tool outputs (not live model calls) plus a nightly live run.
-- AI-12. Default model is `claude-opus-5` (configurable via `AI_MODEL`); adaptive thinking on; per-request `max_tokens` bounded. Cheaper models may be evaluated for narrow extraction tasks (Phase 10) only with eval evidence.
+- AI-12. Default model is `claude-opus-5` (configurable via `AI_MODEL`); adaptive thinking on; per-request `max_tokens` bounded. At the start of Phase 9, verify current model pricing from the Anthropic documentation, measure real per-message cost from `usage` (including cache reads), and set the quota so a business at the quota stays within the §18 cost target. If it cannot, evaluate a cheaper model against the eval set before changing the default. Pricing figures are never assumed from memory.
 - AI-13. PII minimisation: customer phone numbers are not sent to the model unless the question requires them (e.g. "give me John's number"), and then only for the customers in the result set.
 - AI-14. STAFF cannot use the copilot in MVP (it exposes profit). Revisit with a role-aware tool subset.

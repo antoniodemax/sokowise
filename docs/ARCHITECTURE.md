@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.1 — Phase 0 |
+| Status | Draft v0.2 — Phase 0 (architecture review fixes applied) |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ROADMAP.md](ROADMAP.md) |
 
@@ -100,17 +100,18 @@ Rules that keep this honest:
 | `repositories` | queries | models, db |
 | `services` | rules, transactions, audit | repositories, schemas, core, analytics |
 | `analytics` | read-only aggregate queries | repositories, models |
-| `ai` | Claude client, tools, prompts, guardrails | services (read-only), analytics, schemas, core |
+| `ai` | Claude client, tools, prompts, guardrails | analytics, the read-only repository functions named in `ai/tools/registry.py`, schemas, core. Never `services` |
 | `api` | HTTP | services, schemas, ai, core |
 | `integrations` | providers (future M-Pesa) | core, schemas |
 
-`ai` never imports `models` directly and never opens its own session for writes.
+`ai` never imports `models` or `services`. Its data access is: `analytics` functions; an explicit list of repository read functions (`search_products`, `search_customers`, `get_customer_ledger`) imported by name in the tool registry; and the `ai_conversations` / `ai_messages` repository for its own persistence. Tool executions run inside a read-only transaction (`SET TRANSACTION READ ONLY`) so an accidental write from a tool fails at the database; conversation persistence uses the ordinary request session. When AI-proposed actions arrive post-MVP they go through the HTTP API like any client, never through `services` from inside `ai`.
 
 ### 3.3 Request lifecycle
 
 1. Middleware assigns a `request_id`, starts a timer, binds logging context.
 2. `get_current_user` validates the access JWT → loads `User` (must be active).
-3. `get_business_context` reads `bid` from the JWT, verifies an active `BusinessMembership` exists, returns `BusinessContext(business_id, user_id, role, timezone, settings)`.
+3. `get_business_context` reads `bid` from the JWT, loads the `Business` (must be `is_active`) and the user's `BusinessMembership` for it (must exist and be `is_active`), and returns `BusinessContext(business_id, user_id, role, timezone, settings)`. `role` comes from the membership row on every request; the token carries no role claim.
+   3a. If `users.must_change_password` is true, only `POST /auth/change-password` and `POST /auth/logout` are allowed; everything else returns 403 `PASSWORD_CHANGE_REQUIRED`.
 4. `require_role("OWNER")` (where needed) checks the role.
 5. Router → service with `BusinessContext`. Every repository call receives `ctx.business_id`.
 6. Response is serialised through the response schema; errors go through the global handlers (§8).
@@ -154,15 +155,16 @@ Dependencies expected in Phase 1 (each must be justified in the PR that adds it)
 ## 5. Authentication and authorization
 
 ### 5.1 Tokens
-- **Access token:** JWT (HS256 with a strong secret in MVP; RS256 if a second service ever needs to verify tokens). Claims: `sub` (user id), `bid` (active business id), `role`, `iat`, `exp` (15 min), `jti`. Signed with `JWT_SECRET`.
+- **Access token:** JWT (HS256 with a strong secret in MVP; RS256 if a second service ever needs to verify tokens). Claims: `sub` (user id), `bid` (active business id), `iat`, `exp` (15 min), `jti`. Signed with `JWT_SECRET`. The role is deliberately absent: it is read from the membership on every request (§3.3), so a demotion or deactivation takes effect immediately instead of at token expiry.
 - **Refresh token:** 256-bit random opaque string; only its SHA-256 hash is stored (`refresh_tokens`). Lifetime 30 days, rotated on every use, family-revoked on reuse.
-- **Transport:** access token in memory on the client (never localStorage) and sent as `Authorization: Bearer`. Refresh token in an `HttpOnly; Secure; SameSite=Lax` cookie scoped to the API origin, which requires the app and API to share a registrable domain in production (e.g. `app.sokowise.example` and `api.sokowise.example`). If separate domains are unavoidable, fall back to `SameSite=None` plus a CSRF double-submit header. Local dev uses the Vite proxy so cookies are same-origin. **Decision to confirm in Phase 3** when domains are known.
+- **Transport:** access token in memory on the client (never localStorage) and sent as `Authorization: Bearer`. Refresh token in an `HttpOnly; Secure; SameSite=Lax` cookie scoped to the API origin, which requires the app and API to share a registrable domain in production (e.g. `app.sokowise.example` and `api.sokowise.example`). If separate domains are unavoidable, fall back to `SameSite=None` plus a CSRF double-submit header. Local dev uses the Vite proxy so cookies are same-origin.
+- **Deferred decisions (Phase 3):** (1) Vercel preview deployments live on `*.vercel.app`, which is cross-site to the API, so `SameSite=Lax` refresh cookies will not be sent from previews. Phase 3 must choose between a `SameSite=None` + CSRF-header mode enabled only for allow-listed preview origins, a preview API environment on the same site, or accepting that previews use a non-persistent login. (2) Shared shop devices (PRD assumption A8): whether to add an idle timeout, a shorter refresh lifetime, or a "shared device" login mode. Neither decision is made here; until made, the defaults above apply.
 - **CSRF:** refresh and logout endpoints require a custom header (`X-Requested-With: sokowise`) in addition to the cookie.
 
 ### 5.2 Passwords
-- Argon2id via `argon2-cffi` with parameters at or above the OWASP recommendation (m=64 MiB, t=3, p=4 as a starting point; tuned so hashing takes ~250 ms on the Railway instance). Rehash on login when parameters change.
+- Argon2id via `argon2-cffi`. Start at the OWASP minimum (m=19 MiB, t=2, p=1) and raise `t` (then `m`) only after measuring on the deployed Railway instance, aiming for roughly 100–250 ms per hash without exhausting memory under concurrent logins (the container may have 512 MB and 1–2 vCPUs; ten concurrent 64 MiB hashes would not fit). Record the chosen parameters in Phase 3. Rehash on login when parameters change.
 - Minimum 8 characters; check against a small deny-list of common passwords; no composition rules.
-- Login and register endpoints are rate-limited per IP and per identifier.
+- Login and register endpoints are rate-limited per IP and per identifier. **Limitation:** the MVP limiter keeps counters in process memory, and the backend runs 2–4 uvicorn workers, so the effective limit is up to N× the configured value and resets on deploy. This is accepted for the pilot; a shared store (database table or Redis) is the upgrade path if abuse appears. The Argon2 cost is the second line of defence.
 
 ### 5.3 Authorization
 - Role checks are FastAPI dependencies (`require_role`), applied per route.
@@ -186,30 +188,42 @@ User question
       2. build request: cached stable prefix (system prompt + tool definitions)
                          + volatile context (business name, tz, today's date, language hint)
                          + conversation history + new user message
-      3. call Claude (Python SDK, streaming, adaptive thinking, max_tokens bounded)
-      4. loop on stop_reason == "tool_use":
+      3. persist the user message; open the SSE response
+      4. call Claude (Python SDK, streaming, adaptive thinking, max_tokens bounded)
+      5. stream: forward text deltas to the client as they arrive and accumulate
+         the full response server-side
+      6. on stop_reason == "tool_use" (max 6 rounds per turn):
            - look up tool in ToolRegistry (allowlist)
            - validate input with the tool's Pydantic schema
            - execute tool(ctx, **input)  ← ctx supplies business_id; model cannot override it
-           - truncate/bound output, return as tool_result
-      5. validate final response (guardrails)
-      6. persist user + assistant messages with tool call records and usage
-      7. stream text deltas to the client (SSE)
+           - bound the output rows, return as tool_result, go to 4
+      7. on end_turn / max_tokens / refusal: run guardrails over the accumulated
+         response (§6.4)
+      8. persist the assistant message with tool-call records, usage, stop reason
+         and guardrail outcome; if a guardrail failed, the stored message is
+         flagged and the client receives a terminal SSE event carrying a notice
+      9. close the stream
   → Client renders
+
+The user has already seen streamed text by the time guardrails run, so guardrails
+can flag, annotate or refuse to store a *clean* copy; they cannot un-show text.
+Anything that must never reach the user is prevented before the call (tool
+allowlist, PII minimisation, prompt rules), not filtered after it.
 ```
 
 ### 6.2 Tools (MVP, all read-only)
 
 | Tool | Backed by | Notes |
 |---|---|---|
-| `get_period_summary(period | date_from, date_to)` | analytics | revenue, COGS, gross/net profit, counts, payment split |
+| `get_period_summary(period | date_from, date_to)` | analytics | the PRD FR-I1 fields: `revenue` (accrual), `cash_collected` by method, `tender_split`, `cogs`, `lines_missing_cost`, `products_missing_cost`, gross/net profit, counts |
 | `get_top_products(period, by=quantity|revenue|profit, limit≤20)` | analytics | |
 | `get_slow_products(days≤90, limit≤20)` | analytics | |
 | `get_low_stock_products(limit≤50)` | analytics | includes recent sales velocity |
-| `get_debtors(limit≤50)` | analytics | name, balance, oldest charge date; phone only if `include_phone=true` |
+| `get_debtors(limit≤50)` | analytics | `customer_id`, name, balance, oldest charge date; phone only if `include_phone=true` |
 | `get_expense_summary(period, group_by=category)` | analytics | |
 | `search_products(query, limit≤10)` | repository | to resolve names in questions |
-| `get_customer_ledger(customer_id, limit≤50)` | repository | |
+| `search_customers(query, limit≤10)` | repository | resolves a customer named in a question to a `customer_id`; returns id, name, balance; phone only if `include_phone=true` |
+| `get_customer_ledger(customer_id, limit≤50)` | repository | `customer_id` comes from `search_customers` or `get_debtors` |
 
 Tools are declared once with `strict: true` JSON schemas generated from Pydantic. The registry is the *only* way the model can reach data. There is no `run_sql`, no generic `query`, and no tool takes a `business_id` argument.
 
@@ -220,18 +234,20 @@ Tools are declared once with `strict: true` JSON schemas generated from Pydantic
 - Model: `claude-opus-5` by default (`AI_MODEL` setting), `thinking: {"type": "adaptive"}`, `output_config.effort` tuned per evidence (start `medium` for chat latency), `max_tokens` ≈ 2,000 for chat answers.
 
 ### 6.4 Guardrails (backend-side validation of model output)
-1. Response must be text (or a permitted tool call); anything else → fallback.
-2. Length cap (e.g. 2,500 chars); truncated with notice if exceeded.
+1. Content blocks must be text or permitted tool calls; anything else is rejected and a fallback message is stored and sent.
+2. Output length is bounded by `max_tokens` on the request (about 2,000 tokens for chat). There is no post-hoc truncation: streamed text is never cut after the fact.
 3. Tool calls only from the registry; unknown or malformed → `tool_result` with `is_error=true`, max 6 tool rounds per turn.
-4. Every tool result recorded; the assistant message stores which tools backed it (audit/eval).
-5. Refusal or `max_tokens` stop reasons are handled explicitly and surfaced as friendly messages.
+4. Every tool result is recorded; the assistant message stores which tools backed it (audit/eval).
+5. `refusal` and `max_tokens` stop reasons are handled explicitly; the client receives a terminal SSE event with a plain explanation, and the partial text is stored with that stop reason.
 6. Injection hygiene: tool outputs are JSON with escaped strings; the prompt instructs the model that product/customer names may contain arbitrary text.
-7. No write path exists in MVP. When AI-proposed actions arrive (post-MVP), they return a structured *proposal* that the frontend renders for confirmation and then submits through the normal, validated API — never a direct write from the AI module.
+7. Numeric grounding is verified by the eval set (§6.6), not by runtime logic. The backend records which tool results backed an answer; it does not re-derive the model's arithmetic. Owners are told in the UI that figures come from their records and can open the underlying report.
+8. No write path exists in MVP. When AI-proposed actions arrive (post-MVP), they return a structured *proposal* that the frontend renders for confirmation and then submits through the normal, validated API — never a direct write from the AI module.
 
 ### 6.5 Cost and quota
-- Per-business daily message limit (`settings.ai_daily_message_limit`, default 50), checked before calling the API.
+- Per-business quotas are server-side configuration (`AI_DAILY_MESSAGE_LIMIT`, default 10 user messages/day; `AI_MONTHLY_MESSAGE_LIMIT`, default 100/calendar month), checked before calling the API and counted from `ai_messages` rows with `role='user'`. They are not part of `businesses.settings` and no API lets an owner change them.
+- The defaults are conservative on purpose. At the start of Phase 9: read current pricing from the Anthropic documentation (never from memory), measure real per-message cost from `usage` over the eval run, and set the quotas so that a business at quota stays within the PRD §18 cost target.
 - Global monthly spend estimate from token usage; alert at 80%; hard stop at 100% (configurable).
-- Prompt caching on the stable prefix; conversation window bounded (last N messages / token estimate).
+- Prompt caching on the stable prefix. Caching only applies above the model's minimum cacheable prefix, so Phase 9 must confirm `usage.cache_read_input_tokens > 0` on the second and later requests; if it is 0, the prefix is either too short or something volatile sits inside it. Conversation window bounded (last N messages / token estimate).
 
 ### 6.6 Evaluation
 - A fixture business with known answers; question→expected pairs for English and Swahili; injection and refusal cases.
@@ -286,7 +302,8 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 | `COOKIE_DOMAIN`, `COOKIE_SECURE` | prod | refresh cookie settings |
 | `ANTHROPIC_API_KEY` | yes (AI) | server-side only |
 | `AI_MODEL` | no (`claude-opus-5`) | |
-| `AI_DAILY_MESSAGE_LIMIT_DEFAULT` | no (50) | |
+| `AI_DAILY_MESSAGE_LIMIT` | no (10) | per-business user messages per day; operator-controlled |
+| `AI_MONTHLY_MESSAGE_LIMIT` | no (100) | per-business user messages per calendar month; operator-controlled |
 | `AI_MONTHLY_BUDGET_USD` | no | global hard cap |
 | `SENTRY_DSN` | prod | |
 | `LOG_LEVEL` | no (INFO) | |
@@ -321,7 +338,7 @@ Definition of done for a feature: tests for happy path, validation failure, perm
 ## 13. Deployment architecture
 
 - **Frontend:** Vercel, static build, preview deployments per PR, production from `main`.
-- **Backend:** Railway service from `backend/Dockerfile` (multi-stage, non-root user, `uvicorn` with 2–4 workers). Migrations run as a release step (`alembic upgrade head`) before the new version receives traffic.
+- **Backend:** Railway service from `backend/Dockerfile` (multi-stage, non-root user, `uvicorn` with 2–4 workers; see §5.2 for what multiple workers mean for the in-memory rate limiter). Migrations run as a release step (`alembic upgrade head`) before the new version receives traffic.
 - **Database:** Railway PostgreSQL with private networking; connection via `DATABASE_URL` secret.
 - **CI (GitHub Actions):** on PR — backend lint/type/test with a Postgres service container, frontend lint/type/test/build, migration check. On `main` — deploy backend to Railway, frontend to Vercel (Vercel's Git integration), and run a smoke test against `/health/ready`.
 - **Secrets:** stored in Railway/Vercel/GitHub secrets only.

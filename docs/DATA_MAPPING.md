@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.1 — Phase 0 |
+| Status | Draft v0.2 — Phase 0 (architecture review fixes applied) |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -68,7 +68,7 @@ The tenant. One row per shop.
 | address | VARCHAR(255) NULL | |
 | currency | CHAR(3) NOT NULL DEFAULT 'KES' | |
 | timezone | VARCHAR(64) NOT NULL DEFAULT 'Africa/Nairobi' | IANA name |
-| settings | JSONB NOT NULL DEFAULT '{}' | Validated by a Pydantic model; keys: `staff_can_restock` (bool, default false), `sale_backdate_days` (int, default 7), `low_stock_default_threshold` (int, default 5), `ai_daily_message_limit` (int, default 50) |
+| settings | JSONB NOT NULL DEFAULT '{}' | Owner-editable, validated by a Pydantic model; keys: `staff_can_restock` (bool, default false), `sale_backdate_days` (int, default 7), `low_stock_default_threshold` (int, default 5). AI quotas are **not** here: they are server-side configuration (`AI_DAILY_MESSAGE_LIMIT`, `AI_MONTHLY_MESSAGE_LIMIT`, ARCHITECTURE §6.5) so a business cannot raise its own limit. A per-business override, if ever needed, will be an operator-only column, never part of `settings`. |
 | is_active | BOOLEAN NOT NULL DEFAULT true | |
 | created_at, updated_at | | |
 
@@ -85,6 +85,7 @@ A person who can log in. Not tenant-scoped itself; scoped through memberships.
 | full_name | VARCHAR(120) NOT NULL | |
 | password_hash | VARCHAR(255) NOT NULL | Argon2id encoded string |
 | is_active | BOOLEAN NOT NULL DEFAULT true | Global deactivation |
+| must_change_password | BOOLEAN NOT NULL DEFAULT false | Set true when an OWNER creates a STAFF user or resets their password; login succeeds but every endpoint except change-password and logout returns 403 until the user sets a new password |
 | last_login_at | TIMESTAMPTZ NULL | |
 | created_at, updated_at | | |
 
@@ -107,7 +108,8 @@ The access token carries the active `business_id`; the backend re-checks the mem
 ### 3.4 refresh_tokens
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | Also the token family id when `parent_id` is null |
+| id | UUID PK | |
+| family_id | UUID NOT NULL | Same value for every token in one login session's rotation chain; equals the first token's `id`. Indexed. Revocation on reuse is `UPDATE … SET revoked_at = now() WHERE family_id = ?` |
 | user_id | UUID NOT NULL FK | |
 | token_hash | VARCHAR(128) NOT NULL UNIQUE | SHA-256 of the opaque token; the raw token is never stored |
 | parent_id | UUID NULL FK refresh_tokens | Rotation chain |
@@ -116,7 +118,7 @@ The access token carries the active `business_id`; the backend re-checks the mem
 | user_agent, ip | VARCHAR NULL | For "logout everywhere" UX |
 | created_at | | |
 
-Lifecycle: issued at login; on refresh the old row is revoked and a child issued; reuse of a revoked token revokes the whole chain (replay detection).
+Lifecycle: issued at login with a new `family_id`; on refresh the old row is revoked and a child issued with the same `family_id`; presenting a revoked token revokes the whole family (replay detection).
 
 ### 3.5 categories
 | Column | Type | Notes |
@@ -126,7 +128,7 @@ Lifecycle: issued at login; on refresh the old row is revoked and a child issued
 | name | VARCHAR(60) NOT NULL | |
 | created_at, updated_at | | |
 
-Constraint: `UNIQUE (business_id, lower(name))`.
+Constraints: `UNIQUE (business_id, lower(name))`; `UNIQUE (id, business_id)` so `products.category_id` can use the composite tenant FK.
 
 ### 3.6 products
 | Column | Type | Notes |
@@ -140,8 +142,8 @@ Constraint: `UNIQUE (business_id, lower(name))`.
 | unit | VARCHAR(20) NOT NULL DEFAULT 'piece' | CHECK in (`piece`, `kg`, `g`, `litre`, `ml`, `metre`, `pack`, `service`, `other`) |
 | selling_price | NUMERIC(14,2) NOT NULL CHECK ≥ 0 | |
 | cost_price | NUMERIC(14,2) NULL CHECK ≥ 0 | NULL = unknown; analytics flag products with unknown cost |
-| track_inventory | BOOLEAN NOT NULL DEFAULT true | false for services |
-| stock_quantity | NUMERIC(12,3) NOT NULL DEFAULT 0 | Cache of movement ledger (BR-11) |
+| track_inventory | BOOLEAN NOT NULL DEFAULT true | false for services. Untracked products write no inventory movements, skip stock validation on sale, and keep `stock_quantity = 0` |
+| stock_quantity | NUMERIC(12,3) NOT NULL DEFAULT 0 | Cache of movement ledger (BR-11). Never written directly by the API; product creation with `opening_stock` writes an `INITIAL` movement in the same transaction, otherwise the product starts at 0 (PRD FR-D6) |
 | low_stock_threshold | NUMERIC(12,3) NULL | NULL → business default |
 | is_active | BOOLEAN NOT NULL DEFAULT true | Archive instead of delete |
 | created_at, updated_at | | |
@@ -160,7 +162,7 @@ The stock ledger. Append-only.
 | product_id | UUID NOT NULL FK (composite) | |
 | movement_type | VARCHAR(20) NOT NULL | CHECK in (`INITIAL`, `RESTOCK`, `SALE`, `SALE_REVERSAL`, `ADJUSTMENT`) |
 | quantity_delta | NUMERIC(12,3) NOT NULL | Signed. SALE negative; RESTOCK positive; ADJUSTMENT either. |
-| quantity_after | NUMERIC(12,3) NOT NULL | Running balance for auditability |
+| quantity_after | NUMERIC(12,3) NOT NULL | Running balance in commit order (`created_at`), for auditability. Backdated rows (`occurred_at` earlier than `created_at`) keep commit-order balances, so a history sorted by `occurred_at` may show non-monotonic values; `occurred_at` is for reporting only |
 | unit_cost | NUMERIC(14,2) NULL | Required for RESTOCK/INITIAL; enables future weighted-average cost |
 | total_cost | NUMERIC(14,2) NULL | quantity × unit_cost for RESTOCK |
 | sale_id | UUID NULL FK (composite) | Set for SALE / SALE_REVERSAL |
@@ -170,7 +172,9 @@ The stock ledger. Append-only.
 | created_by | UUID NOT NULL FK users | |
 | created_at | | |
 
-Constraints: `CHECK (movement_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`. Index on `(business_id, product_id, occurred_at)`. The service updates `products.stock_quantity` in the same transaction using `SELECT … FOR UPDATE` on the product row to serialise concurrent sales of the same product.
+Constraints: `CHECK (movement_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`. Index on `(business_id, product_id, occurred_at)` and `(business_id, product_id, created_at)`. The service updates `products.stock_quantity` in the same transaction using `SELECT … FOR UPDATE` on the product row to serialise concurrent sales of the same product.
+
+Rules: only `track_inventory=true` products get movements. A void writes `SALE_REVERSAL` rows for every tracked line even if the product has since been archived (`is_active=false`); archiving hides a product from sale entry, it does not stop history from being corrected.
 
 ### 3.8 customers
 | Column | Type | Notes |
@@ -194,11 +198,11 @@ Constraint: `UNIQUE (business_id, phone) WHERE phone IS NOT NULL`. PII: name and
 | business_id | UUID NOT NULL FK | |
 | customer_id | UUID NULL FK (composite) | Required if any payment line is CREDIT |
 | idempotency_key | UUID NOT NULL | Client-generated |
+| idempotency_hash | CHAR(64) NOT NULL | SHA-256 of the canonical request payload; a retry with the same key and a different hash returns 409 |
 | status | VARCHAR(20) NOT NULL | CHECK in (`COMPLETED`, `VOIDED`) |
 | subtotal | NUMERIC(14,2) NOT NULL | Σ line totals |
 | discount_amount | NUMERIC(14,2) NOT NULL DEFAULT 0 | ≤ subtotal |
 | total_amount | NUMERIC(14,2) NOT NULL | subtotal − discount |
-| cost_total | NUMERIC(14,2) NULL | Σ(quantity × unit_cost) where cost known; NULL if any line lacks cost |
 | note | VARCHAR(255) NULL | |
 | sold_at | TIMESTAMPTZ NOT NULL | Business-meaningful time |
 | voided_at | TIMESTAMPTZ NULL | |
@@ -206,6 +210,8 @@ Constraint: `UNIQUE (business_id, phone) WHERE phone IS NOT NULL`. PII: name and
 | void_reason | VARCHAR(255) NULL | |
 | created_by | UUID NOT NULL FK users | |
 | created_at, updated_at | | |
+
+There is no cached cost total on the sale. COGS is always computed from `sale_items` so that lines with unknown cost are counted (`lines_missing_cost`) instead of nulling out the whole sale (PRD BR-16).
 
 Constraints: `UNIQUE (business_id, idempotency_key)`; `CHECK (total_amount = subtotal - discount_amount)`; `CHECK (status <> 'VOIDED' OR (voided_at IS NOT NULL AND void_reason IS NOT NULL))`. Index on `(business_id, sold_at DESC)` and `(business_id, customer_id)`.
 
@@ -222,19 +228,22 @@ Lifecycle: created COMPLETED in one transaction with items, payments, SALE movem
 | quantity | NUMERIC(12,3) NOT NULL CHECK > 0 | |
 | unit_price | NUMERIC(14,2) NOT NULL CHECK ≥ 0 | Actual price charged |
 | default_unit_price | NUMERIC(14,2) NOT NULL | Product price at the time (shows overrides) |
-| unit_cost | NUMERIC(14,2) NULL | Snapshot of product cost_price |
+| unit_cost | NUMERIC(14,2) NULL | Snapshot of product cost_price; NULL = unknown, contributes 0 to COGS and is counted in `lines_missing_cost` |
 | line_total | NUMERIC(14,2) NOT NULL | quantity × unit_price, rounded (BR-9) |
+| discount_allocated | NUMERIC(14,2) NOT NULL DEFAULT 0 | This line's share of `sales.discount_amount`, pro-rata by `line_total` with largest-remainder rounding (BR-14). Σ over the sale = `discount_amount` |
 | created_at | | |
+
+Constraint: `CHECK (discount_allocated >= 0 AND discount_allocated <= line_total)`. Product revenue = `line_total − discount_allocated`; product gross profit = `line_total − discount_allocated − quantity × unit_cost`. Allocating at sale time is what lets product-level and period-level profit reconcile.
 
 ### 3.11 payments
 Payment (tender) lines of a sale. **This is the M-Pesa extension point.**
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
+| id | UUID PK | `UNIQUE (id, business_id)` so `credit_transactions.payment_id` can use the composite tenant FK |
 | business_id | UUID NOT NULL FK | |
 | sale_id | UUID NOT NULL FK (composite) | |
-| method | VARCHAR(20) NOT NULL | CHECK in (`CASH`, `MPESA`, `CREDIT`) — additive: `CARD`, `BANK` later |
+| method | VARCHAR(20) NOT NULL | CHECK in (`CASH`, `MPESA`, `CREDIT`) — additive: `CARD`, `BANK` later. A `CREDIT` row is a receivable, not money received; every "cash collected" query filters `method <> 'CREDIT' AND status = 'CONFIRMED'` (PRD BR-15) |
 | amount | NUMERIC(14,2) NOT NULL CHECK > 0 | |
 | status | VARCHAR(20) NOT NULL DEFAULT 'CONFIRMED' | CHECK in (`CONFIRMED`, `PENDING`, `FAILED`). MVP always CONFIRMED (manual). Daraja STK push will create PENDING and confirm via callback. |
 | reference | VARCHAR(64) NULL | Manually typed M-Pesa code in MVP |
@@ -258,7 +267,7 @@ Customer credit ledger. Append-only.
 | amount | NUMERIC(14,2) NOT NULL | Signed effect on balance: CHARGE +, REPAYMENT −, REVERSAL −, ADJUSTMENT ± |
 | balance_after | NUMERIC(14,2) NOT NULL | Running balance |
 | sale_id | UUID NULL FK (composite) | For CHARGE / REVERSAL |
-| payment_id | UUID NULL FK | The CREDIT payment line that created a CHARGE |
+| payment_id | UUID NULL FK (composite) | The CREDIT payment line that created a CHARGE |
 | payment_method | VARCHAR(20) NULL | For REPAYMENT: `CASH` or `MPESA` |
 | reference | VARCHAR(64) NULL | M-Pesa code for repayment |
 | provider_transaction_id | UUID NULL | Future FK → `mpesa_transactions.id` |
@@ -303,7 +312,7 @@ Restock spend is *not* here (BR-6).
 | id | UUID PK | |
 | business_id | UUID NOT NULL FK | |
 | conversation_id | UUID NOT NULL FK (composite) | |
-| role | VARCHAR(20) NOT NULL | CHECK in (`user`, `assistant`, `system`) |
+| role | VARCHAR(20) NOT NULL | CHECK in (`user`, `assistant`). The system prompt is built per request and is not stored as a message |
 | content | TEXT NOT NULL | Final text shown to the user |
 | tool_calls | JSONB NULL | `[ {name, input, output_summary, duration_ms} ]` — outputs are bounded/truncated |
 | model | VARCHAR(60) NULL | e.g. `claude-opus-5` |
@@ -312,7 +321,7 @@ Restock spend is *not* here (BR-6).
 | latency_ms | INTEGER NULL | |
 | created_at | | |
 
-Index `(business_id, created_at)` for quota counting.
+Index `(business_id, role, created_at)` for quota counting; quotas count `role = 'user'` rows only.
 
 ### 3.16 audit_logs
 | Column | Type | Notes |
@@ -366,10 +375,12 @@ Every arrow from `businesses` is a `business_id NOT NULL`; the child tables also
 ## 6. Financial integrity rules (enforced in services, backed by DB constraints)
 
 1. Sale creation is a single transaction: lock products (`FOR UPDATE`, ordered by id to avoid deadlocks) → validate stock → insert sale, items, payments → insert SALE movements and update `stock_quantity` → if CREDIT, lock customer, insert CHARGE, update `balance` → commit. Any failure rolls everything back.
-2. Idempotency: `UNIQUE (business_id, idempotency_key)`; on conflict return the existing sale (200, not 201).
+2. Idempotency: `UNIQUE (business_id, idempotency_key)`. On conflict, compare `idempotency_hash`: equal → return the existing sale (200, not 201); different → 409 CONFLICT and no write.
 3. Void is the mirror image and is also one transaction, plus an audit row.
 4. Cached columns (`products.stock_quantity`, `customers.balance`) can be recomputed from ledgers; a maintenance command `recompute-caches` will exist and a nightly check will alert on drift.
-5. Analytics always filter `sales.status = 'COMPLETED'` and `expenses.deleted_at IS NULL`.
+5. Analytics always filter `sales.status = 'COMPLETED'` and `expenses.deleted_at IS NULL`; money-received queries also filter `payments.status = 'CONFIRMED' AND method <> 'CREDIT'`.
+6. COGS is computed from `sale_items` only; unknown `unit_cost` contributes 0 and increments `lines_missing_cost` / `products_missing_cost` in every result that reports profit (PRD BR-16).
+7. Sale-level discount is allocated to lines at sale time (`sale_items.discount_allocated`, PRD BR-14) so product and period profit reconcile.
 
 ## 7. Tenant isolation checklist (must hold for every tenant-scoped table)
 
@@ -393,7 +404,7 @@ Every arrow from `businesses` is a `business_id NOT NULL`; the child tables also
 | Stock adjustment | inventory_movements(ADJUSTMENT), audit_logs | ✔ |
 | Void | sales, inventory_movements(SALE_REVERSAL), credit_transactions(REVERSAL), audit_logs | ✔ |
 | Expense | expenses | ✔ |
-| Analytics summary | sales, sale_items, payments, expenses | ✔ (COGS via `sale_items.unit_cost`) |
+| Analytics summary | sales, sale_items, payments, expenses, credit_transactions (repayments for cash collected) | ✔ (COGS via `sale_items.unit_cost`; revenue vs cash collected per PRD BR-15) |
 | Debtors | customers, credit_transactions | ✔ |
 | Copilot | ai_conversations, ai_messages + read-only queries above | ✔ |
 | Future: M-Pesa STK push | payments.status/provider + new mpesa_transactions; sales.status PENDING | ✔ additive |
@@ -403,6 +414,7 @@ Every arrow from `businesses` is a `business_id NOT NULL`; the child tables also
 ## 9. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.
-2. Whether STAFF should see the customer's balance (probably yes, needed to explain to the customer).
-3. AI message retention period (proposal: 12 months, configurable).
-4. Whether `expenses` needs a `supplier_name`/vendor field (probably yes, cheap; decide in Phase 8).
+2. AI message retention period (proposal: 12 months, configurable).
+3. Whether `expenses` needs a `supplier_name`/vendor field (probably yes, cheap; decide in Phase 8).
+
+Resolved since v0.1: STAFF can view customer balances and ledgers (PRD §16) because they record repayments; `sales.cost_total` removed; discount allocated per line; AI quota moved out of owner-editable settings.

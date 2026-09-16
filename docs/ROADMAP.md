@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.1 — Phase 0 |
+| Status | Draft v0.2 — Phase 0 (architecture review fixes applied) |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -78,13 +78,16 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 - JWT access tokens (PyJWT); opaque rotating refresh tokens stored hashed; family revocation on reuse.
 - Endpoints: `POST /auth/register` (creates user + business + OWNER membership atomically), `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/change-password`, `GET /auth/me`.
 - Dependencies: `get_current_user`, `get_business_context`, `require_role`.
-- Rate limiting for login/register; decide library vs in-house and record the reason.
+- Rate limiting for login/register; decide library vs in-house and record the reason; document the per-process limitation (ARCHITECTURE §5.2).
+- Measure Argon2id cost on the target instance starting from m=19 MiB, t=2, p=1; record the chosen parameters.
+- `must_change_password` gate: forced change at first login for owner-created users.
 - Decide cookie/domain strategy (ARCHITECTURE §5.1) and document it.
+- **Deferred decisions to make in this phase:** Vercel preview authentication (cross-site cookies) and shared-device session handling (PRD A8). Both are listed in ARCHITECTURE §5.1; neither is decided yet.
 
 **Dependencies:** Phase 2.
 
 **Completion criteria**
-- Tests: register→login→refresh→logout flow; refresh reuse revokes family; deactivated user rejected; wrong password rate-limited; tokens for business A rejected by membership check when membership is inactive.
+- Tests: register→login→refresh→logout flow; refresh reuse revokes family; deactivated user and inactive business rejected; wrong password rate-limited; tokens for business A rejected by membership check when membership is inactive; role is taken from the membership, not the token; `must_change_password` blocks other endpoints.
 - No password or token material appears in logs.
 
 ---
@@ -97,11 +100,12 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 - `GET/POST/PATCH /users` for OWNER: create STAFF (phone, name, initial password), deactivate, reset password.
 - Last-owner protection.
 - Audit entries for settings and user changes.
+- **Generic tenant-isolation test helper**: a parametrised pytest fixture that, given an endpoint and a factory for its resource, creates the resource in Business B and asserts that Business A gets 404 on read, update, delete and list-exclusion. Every tenant-scoped endpoint added in this and later phases must be registered with it; a PR adding an endpoint without registering it is incomplete.
 
 **Dependencies:** Phase 3.
 
 **Completion criteria**
-- Role matrix tests for every endpoint; tenant isolation tests; audit rows written.
+- Role matrix tests for every endpoint; every tenant-scoped endpoint registered with the isolation helper and passing; audit rows written.
 
 ---
 
@@ -109,7 +113,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 **Objective:** catalogue and stock ledger.
 
 **Tasks**
-- Categories CRUD; products CRUD with archive; search endpoint (name/SKU/barcode prefix).
+- Categories CRUD; products CRUD with archive; search endpoint (name/SKU/barcode prefix). Product creation accepts `opening_stock` + `opening_unit_cost` and writes the `INITIAL` movement atomically (PRD FR-D6); `stock_quantity` is never writable directly.
 - Inventory movements: `POST /inventory/restock`, `POST /inventory/adjust`, `POST /inventory/initial`, `GET /inventory/movements?product_id=`.
 - `products.stock_quantity` maintained transactionally with row locks.
 - Low-stock list endpoint.
@@ -121,36 +125,41 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 **Completion criteria**
 - Concurrency test: two simultaneous restocks/adjustments produce the correct final quantity.
 - Recompute script yields identical values to cached column on fixture data.
-- Role and isolation tests.
+- Tests: untracked products create no movements and are not stock-validated; `quantity_after` follows commit order for backdated movements.
+- Role and isolation tests (registered with the Phase 4 helper).
 
 ---
 
 ## Phase 6 — Sales and payments ☐
-**Objective:** record and void sales with split payments.
+**Objective:** record and void sales with split payments, including the customer records a credit sale needs.
 
 **Tasks**
 - `POST /sales` (idempotency key, lines, payments, optional customer, optional backdate for OWNER); `GET /sales`, `GET /sales/{id}`, `POST /sales/{id}/void`.
 - Single-transaction creation per DATA_MAPPING §6; stock validation; price override recording; discount validation; BR-1 enforcement.
-- CREDIT payment lines create CHARGE ledger entries (customer module stubs from Phase 7 are needed → implement `credit_transactions` write here, the rest of credit in Phase 7).
+- Customers: create, get, list, search (name/phone) — the minimum a credit sale needs. Archive, PII scrub, repayments, adjustments, ledger view and debtors move to Phase 7.
+- CREDIT payment lines create `CHARGE` ledger entries and update `customers.balance` inside the sale transaction; void writes the `REVERSAL`. The rest of the credit module (repayments, adjustments, limits) is Phase 7.
+- Sale-level discount allocated to lines (`sale_items.discount_allocated`, BR-14) with largest-remainder rounding.
+- Idempotency: store `idempotency_hash`; same key + same payload → 200 with the original; same key + different payload → 409.
 - Void reverses stock and credit; audit row.
 - STAFF sees own, same-day sales only.
 
 **Dependencies:** Phase 5.
 
 **Completion criteria**
-- Tests: cash sale; M-Pesa sale with reference; split payment; credit sale requires customer; insufficient stock rejected; idempotent retry returns same sale with no duplicate movements; void restores stock and balance; STAFF cannot void or backdate.
+- Tests: cash sale; M-Pesa sale with reference; split payment; credit sale requires customer; insufficient stock rejected; idempotent retry returns same sale with no duplicate movements; same key with different payload → 409; void restores stock and balance; void of a sale whose product was archived afterwards still writes reversals; Σ `discount_allocated` = `discount_amount` on awkward splits (e.g. 100 across three lines); STAFF cannot void or backdate.
 - Money arithmetic tests for rounding (BR-9).
 
 ---
 
 ## Phase 7 — Customers and credit ☐
-**Objective:** customer records and the credit ledger.
+**Objective:** complete the customer module and the credit ledger.
 
 **Tasks**
-- Customers CRUD with archive and PII scrub endpoint.
+- Customers: update, archive, PII scrub endpoint (create/get/list/search shipped in Phase 6).
 - `POST /customers/{id}/repayments`, `POST /customers/{id}/adjustments` (OWNER), `GET /customers/{id}/ledger`.
 - Debtors list with oldest-charge age (FIFO).
-- Credit-limit rule (BR: STAFF blocked, OWNER warned).
+- Credit-limit rule (FR-G5: STAFF blocked, OWNER warned).
+- STAFF can view customer balance and ledger (PRD §16); OWNER-only for adjustments.
 - `recompute_caches` extended to `customers.balance`.
 
 **Dependencies:** Phase 6.
@@ -165,13 +174,13 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 **Tasks**
 - Expenses CRUD (soft delete, audit).
-- `analytics/` query functions and endpoints: period summary, top products (qty/revenue/profit), slow products, low stock, debtors summary, expenses by category, payment-method split. Period boundaries computed in business timezone.
+- `analytics/` query functions and endpoints: period summary with the exact FR-I1 fields (`revenue` accrual, `cash_collected` by method including credit repayments, `tender_split`, `cogs`, `lines_missing_cost`, `products_missing_cost`, gross/net profit), top products (qty / revenue / profit using `discount_allocated`), slow products, low stock, debtors summary, expenses by category. Period boundaries computed in business timezone.
 - CSV export endpoints (sales, customers, expenses).
 
 **Dependencies:** Phase 7.
 
 **Completion criteria**
-- Fixture-based tests with hand-computed expected values for every analytics function, including a day-boundary case around midnight Nairobi time and a voided-sale exclusion case.
+- Fixture-based tests with hand-computed expected values for every analytics function, including: a day-boundary case around midnight Nairobi time; a voided-sale exclusion case; a credit sale that raises revenue but not cash collected, followed by a repayment that raises cash collected but not revenue; a product with unknown cost reported in `lines_missing_cost`; Σ product profit = period gross profit on a discounted sale.
 - Query plans checked on the transactional indexes (no seq scans on `sales` for a period query).
 
 ---
@@ -183,13 +192,18 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 - `ai/` module: Anthropic Python SDK client, settings, tool registry with Pydantic strict schemas over Phase 8 analytics, prompt builder with cached stable prefix, guardrails, quota check, persistence to `ai_conversations`/`ai_messages`.
 - Endpoints: `POST /ai/conversations`, `GET /ai/conversations`, `GET /ai/conversations/{id}`, `POST /ai/conversations/{id}/messages` (SSE streaming).
 - Eval set: fixture questions (English + Swahili), expected numbers, refusal and injection cases; CI runs with recorded tool outputs; nightly live run script.
-- Cost logging and monthly cap.
+- Cost logging and global monthly cap; per-business quotas from `AI_DAILY_MESSAGE_LIMIT` / `AI_MONTHLY_MESSAGE_LIMIT` (server-side, not owner-editable).
+- **Pricing and cost verification (first task of the phase):** read current model pricing from the Anthropic documentation, run the eval set, measure per-message cost from `usage` (input, output, cache read), and record it in the PR. Set the quotas so a business at quota stays within the PRD §18 target; if the default model cannot meet it, evaluate a cheaper model against the eval set before changing `AI_MODEL`.
+- **Cache-hit verification:** assert `usage.cache_read_input_tokens > 0` on the second request with the same stable prefix; treat 0 as a bug (volatile content inside the cached prefix or a prefix below the minimum cacheable size).
+- `search_customers` tool and the `get_debtors → customer_id → get_customer_ledger` path.
+- Tool executions run in a read-only transaction (`SET TRANSACTION READ ONLY`); conversation persistence uses the normal session.
 
 **Dependencies:** Phase 8.
 
 **Completion criteria**
 - The six PRD §20 questions answered correctly on the fixture business in both languages (live eval run recorded in the PR).
-- Tests: unknown tool rejected; tool cannot be called with another business's id (no such parameter exists — asserted at schema level); quota exceeded → 429; API outage → graceful error; response length cap.
+- Tests: unknown tool rejected; tool cannot be called with another business's id (no such parameter exists — asserted at schema level); quota exceeded → 429 and owners cannot change the quota through any endpoint; API outage → graceful error; `max_tokens`/`refusal` stop reasons produce the terminal SSE notice; guardrail failure flags the stored message; a tool that attempts a write fails inside the read-only transaction.
+- Measured cost per message and cache-hit evidence recorded in the phase PR; quotas adjusted if needed.
 - No `ANTHROPIC_API_KEY` in frontend or logs.
 
 ---
@@ -213,7 +227,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 **Objective:** confidence before UI work.
 
 **Tasks**
-- Tenant isolation test matrix generated over every resource and verb.
+- Audit that every tenant-scoped endpoint is registered with the Phase 4 isolation helper (generate the list from the router table and diff it against the registrations); fix any gap.
 - Permission matrix test generated from PRD §16.
 - Security review: headers, CORS, cookie flags, rate limits, error leakage, dependency audit, secret scanning in CI.
 - Evaluate Postgres RLS as a second layer; implement if cost is low.

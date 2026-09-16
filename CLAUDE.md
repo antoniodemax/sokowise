@@ -43,9 +43,14 @@ Phase 0 complete (documentation). No application code exists yet. The Vite scaff
 ## Domain rules that are easy to get wrong
 - Money is `Decimal`/`NUMERIC(14,2)`; never `float`. Quantities are `NUMERIC(12,3)`.
 - Sales are immutable; corrections are voids that reverse stock and credit. Ledgers (`inventory_movements`, `credit_transactions`, `audit_logs`) are append-only.
-- Restocks are stock-in, not expenses. Gross profit = revenue − COGS (from `sale_items.unit_cost` snapshots); net = gross − operating expenses.
+- Restocks are stock-in, not expenses. Gross profit = revenue − COGS (from `sale_items.unit_cost` snapshots); net = gross − operating expenses. Lines with unknown cost contribute 0 to COGS and must be reported as `lines_missing_cost` / `products_missing_cost`; never hide them.
+- Revenue is accrual (Σ `total_amount` of COMPLETED sales, credit included). Cash collected is CASH/MPESA tenders plus credit repayments. A CREDIT tender is a receivable, never cash received. Repayments are never revenue.
+- Sale-level discounts are allocated to lines at sale time (`sale_items.discount_allocated`) so product profit reconciles to period profit.
 - "Today" means the business's timezone (`businesses.timezone`), not UTC.
-- Sale creation is idempotent on `(business_id, idempotency_key)`.
+- Sale creation is idempotent on `(business_id, idempotency_key)`; the same key with a different payload is a 409, never a silent success.
+- Role comes from the verified `business_memberships` row on every request, never from a token claim. `get_business_context` also rejects inactive businesses.
+- AI quotas are server-side configuration (`AI_DAILY_MESSAGE_LIMIT`, `AI_MONTHLY_MESSAGE_LIMIT`). They are never stored in `businesses.settings` and no endpoint lets an owner change them.
+- The `ai` module imports `analytics` and named read-only repository functions only; never `services`.
 - Payment lines live in `payments` (CASH / MPESA / CREDIT). M-Pesa API integration is future work and must slot in via `payments.provider/status` without touching sales logic.
 
 ## Working conventions
