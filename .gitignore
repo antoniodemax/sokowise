@@ -22,3 +22,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files (secrets) — keep .env.example only
+.env
+.env.*
+!.env.example
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+htmlcov/
+.coverage
+
+# Frontend build output inside frontend/
+frontend/dist
+frontend/node_modules

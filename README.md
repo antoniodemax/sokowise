@@ -1,76 +1,52 @@
-# React + TypeScript + Vite
+# SokoWise
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-Currently, two official plugins are available:
+**Status:** Phase 0 (product discovery and architecture) complete. No application code yet. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Documentation
 
-## React Compiler
+| Document | Purpose |
+|---|---|
+| [docs/PRD.md](docs/PRD.md) | Product requirements: vision, users, MVP scope, functional/non-functional requirements, business rules, roles, acceptance criteria, risks, AI requirements |
+| [docs/DATA_MAPPING.md](docs/DATA_MAPPING.md) | Entities, fields, relationships, constraints, tenant isolation, financial integrity |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Backend/frontend/database/auth/AI architecture, error handling, config, testing, deployment, security boundaries |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Sequential phases with tasks, dependencies and completion criteria |
+| [CLAUDE.md](CLAUDE.md) | Engineering rules for anyone (human or AI) working on the codebase |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Planned stack
 
-## Expanding the ESLint configuration
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui — deployed on Vercel
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy 2.x (async), Alembic, Pydantic — deployed on Railway
+- **Database:** PostgreSQL (Railway)
+- **Auth:** JWT access tokens + rotating refresh tokens, Argon2id password hashing
+- **AI:** Anthropic Claude API, server-side only, read-only tool access to validated business data
+- **Ops:** Docker Compose (local), GitHub Actions (CI/CD), Sentry (errors)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Repository layout
 
 ```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+docs/          product and engineering documentation (source of truth)
+backend/       FastAPI service (Phase 1+)
+frontend/      React app (Phase 1 moves the current root Vite scaffold here)
+docker/        local development helpers
+scripts/       repo-level scripts
+.github/       CI workflows
 ```
-# sokowise
+
+The Vite/React scaffold currently at the repository root (`src/`, `index.html`, `package.json`) is the initial frontend and will be relocated to `frontend/` in Phase 1.
+
+## Local development
+
+Nothing to run yet beyond the scaffold:
+
+```bash
+npm install
+npm run dev
+```
+
+Phase 1 adds `docker compose up` (PostgreSQL) and the backend. Environment variables are documented in `.env.example`; copy it to `.env` locally and never commit `.env`.
+
+## Contributing
+
+Read `CLAUDE.md` before making changes. Commits follow `type: summary` (`feat:`, `fix:`, `test:`, `docs:`, `chore:`, `refactor:`).
