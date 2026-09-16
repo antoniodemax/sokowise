@@ -33,6 +33,10 @@ services:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # No default: set JWT_SECRET in .env (the backend refuses to start without it).
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
       API_PORT: 8000
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sokowise}:${POSTGRES_PASSWORD:-sokowise}@postgres:5432/${POSTGRES_DB:-sokowise}
     ports:

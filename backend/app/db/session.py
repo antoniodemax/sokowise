@@ -2,10 +2,11 @@
 
 The engine is created once per process in the application lifespan and stored on
 `app.state`; routes obtain a session through `get_session`. Services own
-transactions (`async with session.begin()`); this module never commits.
+transactions (`async with transaction(session)`); `get_session` itself never commits.
 """
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import (
@@ -38,3 +39,21 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     session_factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
     async with session_factory() as session:
         yield session
+
+
+@asynccontextmanager
+async def transaction(session: AsyncSession) -> AsyncIterator[None]:
+    """Commit on success, roll back on any exception.
+
+    Services wrap their work in this instead of `session.begin()` because a request
+    dependency (`get_current_user`) usually ran a read first, which autobegan the
+    session's transaction; `begin()` would then raise. Joining it is what we want:
+    one transaction per request, committed exactly once by the service.
+    """
+    try:
+        yield
+    except BaseException:
+        await session.rollback()
+        raise
+    else:
+        await session.commit()

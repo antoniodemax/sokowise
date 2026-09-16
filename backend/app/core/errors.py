@@ -4,9 +4,8 @@ Every non-2xx response has the shape:
 
     {"error": {"code": "...", "message": "...", "details": ..., "request_id": "..."}}
 
-Domain exceptions raised by services in later phases subclass `AppError`; this
-module only maps them to HTTP. Stack traces, SQL and internal identifiers never
-reach the client.
+Domain exceptions raised by services subclass `AppError`; this module only maps
+them to HTTP. Stack traces, SQL and internal identifiers never reach the client.
 """
 
 import logging
@@ -30,11 +29,59 @@ class AppError(Exception):
 
     status_code: int = HTTPStatus.BAD_REQUEST
     code: str = "BAD_REQUEST"
+    # Extra response headers, e.g. `WWW-Authenticate` on 401 or `Retry-After` on 429.
+    headers: dict[str, str] | None = None
 
-    def __init__(self, message: str, *, details: object = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        details: object = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.details = details
+        if code is not None:
+            self.code = code
+        if headers is not None:
+            self.headers = headers
+
+
+class UnauthorizedError(AppError):
+    """Missing, invalid or expired credentials. The message never says which."""
+
+    status_code = HTTPStatus.UNAUTHORIZED
+    code = "UNAUTHORIZED"
+    headers = {"WWW-Authenticate": "Bearer"}
+
+
+class PermissionDeniedError(AppError):
+    """Authenticated, but not allowed to do this within the caller's own business."""
+
+    status_code = HTTPStatus.FORBIDDEN
+    code = "FORBIDDEN"
+
+
+class NotFoundError(AppError):
+    """Also the answer for anything belonging to another business (ARCHITECTURE §8)."""
+
+    status_code = HTTPStatus.NOT_FOUND
+    code = "NOT_FOUND"
+
+
+class ConflictError(AppError):
+    status_code = HTTPStatus.CONFLICT
+    code = "CONFLICT"
+
+
+class RateLimitedError(AppError):
+    status_code = HTTPStatus.TOO_MANY_REQUESTS
+    code = "RATE_LIMITED"
+
+    def __init__(self, message: str, *, retry_after_seconds: int) -> None:
+        super().__init__(message, headers={"Retry-After": str(retry_after_seconds)})
 
 
 def error_response(
@@ -69,9 +116,12 @@ _HTTP_STATUS_CODES: dict[int, str] = {
 
 async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)  # noqa: S101 — registered only for AppError
-    return error_response(
+    response = error_response(
         status_code=exc.status_code, code=exc.code, message=exc.message, details=exc.details
     )
+    if exc.headers:
+        response.headers.update(exc.headers)
+    return response
 
 
 async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:

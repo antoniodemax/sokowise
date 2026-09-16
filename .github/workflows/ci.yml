@@ -35,6 +35,8 @@ jobs:
       CORS_ORIGINS: http://localhost:5173
       DATABASE_URL: postgresql+asyncpg://sokowise:sokowise@localhost:5432/sokowise_test
       TEST_DATABASE_URL: postgresql+asyncpg://sokowise:sokowise@localhost:5432/sokowise_test
+      # Test-only signing key; not a secret.
+      JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

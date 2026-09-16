@@ -23,10 +23,11 @@ def test_settings_fail_fast_when_required_values_are_missing(
     monkeypatch.delenv("APP_ENV", raising=False)
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("JWT_SECRET", raising=False)
     with pytest.raises(ValidationError) as exc_info:
         Settings()
     missing = {str(error["loc"][0]) for error in exc_info.value.errors()}
-    assert missing == {"app_env", "cors_origins", "database_url"}
+    assert missing == {"app_env", "cors_origins", "database_url", "jwt_secret"}
 
 
 def test_database_url_must_use_asyncpg_driver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -64,3 +65,39 @@ def test_unsafe_client_request_id_is_replaced(candidate: str) -> None:
     resolved = resolve_request_id(candidate)
     assert resolved != candidate
     uuid.UUID(resolved)
+
+
+def test_jwt_secret_must_be_long_enough(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET", "short")
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings()
+
+
+def test_production_requires_a_secure_refresh_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("COOKIE_SECURE", "false")
+    with pytest.raises(ValidationError, match="COOKIE_SECURE"):
+        Settings()
+
+
+def test_samesite_none_requires_secure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COOKIE_SAMESITE", "none")
+    monkeypatch.setenv("COOKIE_SECURE", "false")
+    with pytest.raises(ValidationError, match="COOKIE_SAMESITE"):
+        Settings()
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    assert Settings().cookie_samesite == "none"
+
+
+def test_blank_optional_values_are_treated_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COOKIE_DOMAIN", "")
+    monkeypatch.setenv("CORS_ORIGIN_REGEX", "")
+    monkeypatch.setenv("JWT_ISSUER", "")
+    settings = Settings()
+    assert settings.cookie_domain is None
+    assert settings.cors_origin_regex is None
+    assert settings.jwt_issuer is None
+
+
+def test_secret_is_not_printed_in_settings_repr() -> None:
+    assert "test-only-jwt-secret" not in repr(Settings())

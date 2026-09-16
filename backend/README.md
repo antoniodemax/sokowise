@@ -22,6 +22,22 @@ The API listens on http://localhost:8000. Health endpoints:
 - `GET /health/live` — process is up (200)
 - `GET /health/ready` — 200 when `SELECT 1` succeeds on the database, otherwise 503
 
+Authentication (`/api/v1/auth`, docs/ARCHITECTURE.md §5):
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /register` | — | create user + business + OWNER membership; returns a session |
+| `POST /login` | — | phone-or-email + password; returns a session |
+| `POST /refresh` | refresh cookie + `X-Requested-With: sokowise` | rotate the refresh token, new access token |
+| `POST /logout` | refresh cookie + `X-Requested-With: sokowise` | revoke this device's session (204) |
+| `POST /logout-all` | bearer | revoke every session of the user (204) |
+| `POST /change-password` | bearer | set a new password; clears `must_change_password`; replaces all sessions |
+| `GET /me` | bearer | the caller's user, business and role |
+
+A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
+`sokowise_refresh` HttpOnly cookie; the refresh token is never in the body. `JWT_SECRET` (≥ 32
+characters) is required; with `COOKIE_SECURE=false` the cookie works over plain http locally.
+
 ## Database
 
 ```bash
@@ -57,13 +73,19 @@ Without it the database tests are skipped and pytest says so.
 ```
 app/
 ├── main.py            application factory (create_app) and the `app` object uvicorn serves
-├── core/              config (pydantic-settings), logging, error envelope
-├── db/                declarative base, naming convention, async engine + session dependency
+├── core/              config (pydantic-settings), logging, error envelope, passwords (Argon2id),
+│                      tokens (JWT + opaque refresh), rate limiter, request context dataclasses
+├── db/                declarative base, naming convention, async engine, session dependency,
+│                      `transaction()` helper used by services
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
+├── schemas/           Pydantic request/response models (auth), identifier normalisation
+├── repositories/      queries (users/memberships, businesses, refresh tokens)
+├── services/          transactions and rules (auth: register, login, refresh, logout, password)
 ├── middleware/        request-ID middleware and access log
-└── api/               HTTP routers (health now; versioned routers under api/v1 from Phase 3)
+└── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
+                       v1/ (routers mounted at /api/v1: auth)
 alembic/               migrations (async env); alembic.ini holds no URL
-tests/                 pytest; tests/db/ needs PostgreSQL
+tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api` fixture)
 ```
 
 Settings are read from environment variables (see `../.env.example`). The app refuses to start

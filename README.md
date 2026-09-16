@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** Phase 2 (database schema and migrations) implemented. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** Phase 3 (authentication and authorization) implemented. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 
@@ -19,7 +19,7 @@ AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, b
 - **Frontend:** React 19, TypeScript, Vite (Tailwind CSS and shadcn/ui are added in Phase 12) — deployed on Vercel
 - **Backend:** Python 3.12, FastAPI, Pydantic, pydantic-settings, SQLAlchemy 2.x (async, asyncpg), Alembic — deployed on Railway
 - **Database:** PostgreSQL 16 (Railway)
-- **Auth:** JWT access tokens + rotating refresh tokens, Argon2id (Phase 3)
+- **Auth:** JWT access tokens + rotating refresh tokens in an HttpOnly cookie, Argon2id, roles from the membership row on every request
 - **AI:** Anthropic Claude API, server-side only, read-only tool access to validated business data (Phase 9)
 - **Ops:** Docker Compose (local), GitHub Actions (CI), Sentry (errors)
 
@@ -54,6 +54,9 @@ uv run uvicorn app.main:app --reload --env-file ../.env
 curl localhost:8000/health/live     # {"status":"ok"}
 curl localhost:8000/health/ready    # {"status":"ready","checks":{"database":"ok"}}
 ```
+
+Set a real `JWT_SECRET` in `.env` (≥ 32 characters, e.g. `python -c "import secrets; print(secrets.token_urlsafe(48))"`);
+the backend refuses to start without one. The auth endpoints are listed in `backend/README.md`.
 
 **Frontend** (http://localhost:5173):
 

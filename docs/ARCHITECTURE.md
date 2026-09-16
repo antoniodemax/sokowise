@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.2 — Phase 0 (architecture review fixes applied) |
+| Status | Draft v0.3 — Phase 3 (authentication implemented; §5 records the decisions) |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ROADMAP.md](ROADMAP.md) |
 
@@ -66,7 +66,7 @@ sokowise/
 └── README.md
 ```
 
-**Current state (after Phase 2):** the Vite scaffold lives in `frontend/`. `backend/` holds the application factory, settings, JSON logging, the error envelope, the request-ID middleware, the health endpoints, `app/db/` (base, engine, session dependency), `app/models/` (the 16 MVP tables) and `alembic/` (one migration, `b7a497cc6a27`). `schemas/`, `repositories/`, `services/`, `analytics/`, `ai/`, `integrations/` and `api/v1/` do not exist yet and are created by the phases that need them. Middleware lives in `app/middleware/`.
+**Current state (after Phase 3):** the Vite scaffold lives in `frontend/` (plus a dev proxy for `/api`, §5.1). `backend/` holds the application factory, settings, JSON logging, the error envelope, the request-ID middleware, the health endpoints, `app/db/` (base, engine, session dependency, `transaction()` helper), `app/models/` (the 16 MVP tables), `alembic/` (one migration, `b7a497cc6a27`), and the authentication slice: `app/core/passwords.py`, `app/core/tokens.py`, `app/core/ratelimit.py`, `app/core/context.py` (`BusinessContext`, `ClientInfo`), `app/schemas/auth.py` + `identifiers.py`, `app/repositories/{users,businesses,refresh_tokens}.py`, `app/services/auth.py`, `app/api/deps.py` and `app/api/v1/auth.py` (mounted at `/api/v1/auth`). `analytics/`, `ai/` and `integrations/` do not exist yet. Middleware lives in `app/middleware/`.
 
 ## 3. Backend architecture
 
@@ -85,7 +85,7 @@ HTTP request
 Rules that keep this honest:
 
 - **Routers are thin.** No business logic, no direct DB access. They resolve dependencies (`current_user`, `business_ctx`, `session`), call one service function, and return.
-- **Services own transactions.** A service method receives a `Session`, does its work, and commits explicitly (`async with session.begin()`), so multi-step financial operations are visibly atomic. The request-scoped dependency only opens and closes the session; it never commits.
+- **Services own transactions.** A service method receives a `Session`, does its work, and commits explicitly (`async with transaction(session)` from `app.db.session`), so multi-step financial operations are visibly atomic. The helper commits on success and rolls back on any exception; it joins the transaction that a request dependency's read (`get_current_user`) already autobegan, so there is exactly one transaction per request. The request-scoped dependency only opens and closes the session; it never commits. Bulk `UPDATE`s run with `synchronize_session=False` (the async-safe option); code must not read an ORM object it has just bulk-updated in the same session.
 - **Repositories never accept an unscoped lookup.** `ProductRepository.get(session, business_id, product_id)`; there is no `get(product_id)`.
 - **Models contain no business logic** beyond column definitions, relationships and simple properties.
 - **Schemas are separate from models.** Never return ORM objects directly. Response schemas exclude internal fields (`password_hash`, `token_hash`).
@@ -110,10 +110,10 @@ Rules that keep this honest:
 ### 3.3 Request lifecycle
 
 1. `RequestIDMiddleware` assigns a `request_id`, starts a timer and binds the logging context. A client-supplied `X-Request-ID` is kept when it matches `[A-Za-z0-9._-]{1,64}`; otherwise a UUID4 is generated. The ID is returned in the `X-Request-ID` response header and written into every error envelope. The middleware is pure ASGI and sits inside CORS (the last middleware added is the outermost), so an unhandled exception becomes the 500 envelope while the ID is still bound and the response still carries CORS headers.
-2. `get_current_user` validates the access JWT → loads `User` (must be active).
-3. `get_business_context` reads `bid` from the JWT, loads the `Business` (must be `is_active`) and the user's `BusinessMembership` for it (must exist and be `is_active`), and returns `BusinessContext(business_id, user_id, role, timezone, settings)`. `role` comes from the membership row on every request; the token carries no role claim.
-   3a. If `users.must_change_password` is true, only `POST /auth/change-password` and `POST /auth/logout` are allowed; everything else returns 403 `PASSWORD_CHANGE_REQUIRED`.
-4. `require_role("OWNER")` (where needed) checks the role.
+2. `get_access_claims` verifies the bearer JWT (signature, `exp`, `typ`, required claims, `iss`/`aud` when configured) → `get_current_user` loads the `User` (must exist and be active). Failures are a generic 401 `UNAUTHORIZED` with `WWW-Authenticate: Bearer`.
+3. `get_business_context` reads `bid` from the JWT, loads the user's `BusinessMembership` for it (must exist — otherwise 401, the token is not a valid session — and be `is_active`, otherwise 403 `MEMBERSHIP_INACTIVE`), loads the `Business` (must be `is_active`, otherwise 403 `BUSINESS_INACTIVE`), and returns `BusinessContext(user_id, business_id, role, timezone, settings)` (`app.core.context`). `role` comes from the membership row on every request; the token carries no role claim and `bid` is only a selector. A deactivation or demotion therefore takes effect on the next request, not at token expiry.
+   3a. If `users.must_change_password` is true, `get_business_context` returns 403 `PASSWORD_CHANGE_REQUIRED`, which gates every business endpoint including `GET /auth/me`. The endpoints that need only `get_current_user` — `POST /auth/change-password`, `POST /auth/logout-all` — and the cookie-authenticated `POST /auth/refresh` and `POST /auth/logout` keep working, so the user can stay on the change-password screen and finish. Login and refresh responses carry `user.must_change_password` so the client knows to route there.
+4. `require_role(MembershipRole.OWNER)` (where needed) checks the role; `require_owner` and `require_member` (OWNER or STAFF) are the two ready-made guards. OWNER satisfies every member check; STAFF never satisfies an owner check.
 5. Router → service with `BusinessContext`. Every repository call receives `ctx.business_id`.
 6. Response is serialised through the response schema; errors go through the global handlers (§8).
 
@@ -156,16 +156,25 @@ Dependencies expected in Phase 1 (each must be justified in the PR that adds it)
 ## 5. Authentication and authorization
 
 ### 5.1 Tokens
-- **Access token:** JWT (HS256 with a strong secret in MVP; RS256 if a second service ever needs to verify tokens). Claims: `sub` (user id), `bid` (active business id), `iat`, `exp` (15 min), `jti`. Signed with `JWT_SECRET`. The role is deliberately absent: it is read from the membership on every request (§3.3), so a demotion or deactivation takes effect immediately instead of at token expiry.
-- **Refresh token:** 256-bit random opaque string; only its SHA-256 hash is stored (`refresh_tokens`). Lifetime 30 days, rotated on every use, family-revoked on reuse.
-- **Transport:** access token in memory on the client (never localStorage) and sent as `Authorization: Bearer`. Refresh token in an `HttpOnly; Secure; SameSite=Lax` cookie scoped to the API origin, which requires the app and API to share a registrable domain in production (e.g. `app.sokowise.example` and `api.sokowise.example`). If separate domains are unavoidable, fall back to `SameSite=None` plus a CSRF double-submit header. Local dev uses the Vite proxy so cookies are same-origin.
-- **Deferred decisions (Phase 3):** (1) Vercel preview deployments live on `*.vercel.app`, which is cross-site to the API, so `SameSite=Lax` refresh cookies will not be sent from previews. Phase 3 must choose between a `SameSite=None` + CSRF-header mode enabled only for allow-listed preview origins, a preview API environment on the same site, or accepting that previews use a non-persistent login. (2) Shared shop devices (PRD assumption A8): whether to add an idle timeout, a shorter refresh lifetime, or a "shared device" login mode. Neither decision is made here; until made, the defaults above apply.
-- **CSRF:** refresh and logout endpoints require a custom header (`X-Requested-With: sokowise`) in addition to the cookie.
+- **Access token:** JWT, HS256 with `JWT_SECRET` (≥ 32 characters; RS256 if a second service ever needs to verify tokens). Claims: `sub` (user id), `bid` (the business the session was opened for), `jti` (random), `iat`, `exp` (`ACCESS_TOKEN_TTL_MINUTES`, default 15), `typ: "access"`, plus `iss`/`aud` when `JWT_ISSUER`/`JWT_AUDIENCE` are set (then they are verified on every token; unset by default). The algorithm list is pinned to HS256 and every claim above is required, so `alg: none`, missing-claim and wrong-`typ` tokens are rejected. The role is deliberately absent: it is read from the membership on every request (§3.3). `bid` is not an authorization claim either — the membership for `(sub, bid)` is re-verified every time, and a token naming a business the user has no membership in is a 401. Nothing the client sends (body, query, header) can change `business_id` or `role`; the request models forbid unknown fields, so a smuggled `role` is a 422.
+- **Refresh token:** `secrets.token_urlsafe(32)` (256 bits, never a UUID); only its SHA-256 hex digest is stored in `refresh_tokens.token_hash`. Lifetime `REFRESH_TOKEN_TTL_DAYS` (default 30). Rotation is one atomic `UPDATE … WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > now() RETURNING *`: under READ COMMITTED two concurrent refreshes with the same token cannot both match, so exactly one gets a child token (same `family_id`, `parent_id` = the consumed row) and the other is treated as reuse. **Reuse detection:** presenting a token that is already revoked (rotated away, logged out, or consumed by a concurrent request) revokes every live token in its `family_id`, is logged as a warning with ids only, and returns 401 `INVALID_REFRESH_TOKEN`; that revocation is committed even though the request fails. Unknown and expired tokens are also 401 but revoke nothing. A refresh while the business or membership is inactive is a 403 whose transaction rolls back, so the token is not consumed and works again once the business is reactivated. The frontend must serialise refreshes (one in-flight refresh promise) because a benign double refresh is indistinguishable from theft and ends the session.
+- **Logout:** `POST /auth/logout` revokes the whole family of the presented cookie server-side and clears the cookie; it is idempotent (unknown, already-revoked or missing cookie → 204) and needs no bearer token, so an expired access token cannot trap a user in a session. `POST /auth/logout-all` (bearer) revokes every refresh token of the user, on every device. Access tokens are not revocable and stay valid until `exp` (≤ 15 min); nothing in MVP needs a denylist.
+- **Transport:** access token in memory on the client (never localStorage) and sent as `Authorization: Bearer`. Refresh token in the `sokowise_refresh` cookie: `HttpOnly`, `Secure` (mandatory in production — settings refuse to start otherwise), `SameSite` = `COOKIE_SAMESITE`, `Path=/api/v1/auth` (so no other endpoint ever receives it), `Max-Age` = the refresh lifetime, `Domain` = `COOKIE_DOMAIN` when set (host-only otherwise). The body never contains it. The cookie is deleted on logout, logout-all and on any refresh failure.
+- **CSRF:** the cookie-consuming endpoints (`/auth/refresh`, `/auth/logout`) require `X-Requested-With: sokowise`. A cross-site form cannot set a custom header, and a cross-origin `fetch` that sets it triggers a CORS preflight that only the allow-listed origins pass; the check is independent of the cookie's `SameSite` value, so it is what protects the cross-site (preview) mode. On top of that, every auth `POST` (register, login, refresh, logout, change-password) rejects a browser `Origin` header that is neither in `CORS_ORIGINS` nor matched by `CORS_ORIGIN_REGEX` (403 `CSRF_REJECTED`; `null` is rejected; requests without an `Origin`, i.e. non-browser clients, pass). The Origin check on login/register is what stops login CSRF (a foreign page logging the victim into the attacker's account). Bearer-only endpoints need no CSRF protection: the token is not an ambient credential.
+- **Environments (decision for the deferred Vercel-preview question):**
+  | Environment | App origin | API origin | Cookie | CORS |
+  |---|---|---|---|---|
+  | Local development | `http://localhost:5173` | proxied through Vite (`/api` → `localhost:8000`, `frontend/vite.config.ts`) so the cookie is same-origin | `COOKIE_SECURE=false`, `SameSite=Lax` | `http://localhost:5173` |
+  | Production | `app.<domain>` (Vercel, custom domain) | `api.<domain>` (Railway, custom domain) — same registrable domain | `Secure; SameSite=Lax` (default), host-only on the API host | exact `CORS_ORIGINS` |
+  | Vercel previews | `https://sokowise-*.vercel.app` (cross-site to any API domain) | a **separate preview API environment** on Railway (its own database) with `COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`, `CORS_ORIGIN_REGEX=^https://sokowise-[a-z0-9-]+\.vercel\.app$` | `Secure; SameSite=None` | regex + exact list |
+  Production never runs with `SameSite=None`; the cross-site mode exists only where the app is genuinely cross-site, and its CSRF protection is the custom header + Origin check above. Previews therefore have persistent logins without weakening production. The frontend needs no code change for this: the API base URL is already per-environment (`VITE_API_BASE_URL`).
+- **Shared shop devices (decision for PRD A8):** MVP keeps the standard 30-day rotating refresh token and relies on explicit `logout` (revokes that device's family) and `logout-all` (every device), both immediate server-side; no plaintext credentials or tokens are ever persisted by the client beyond the HttpOnly cookie. No idle timeout, shorter lifetime or "shared device" login mode is added until the pilot shows that staff actually share a device (A8 is an assumption to validate). Should it be needed, a per-login `remember` flag that shortens the refresh lifetime is the smallest change and needs no schema work.
 
 ### 5.2 Passwords
-- Argon2id via `argon2-cffi`. Start at the OWASP minimum (m=19 MiB, t=2, p=1) and raise `t` (then `m`) only after measuring on the deployed Railway instance, aiming for roughly 100–250 ms per hash without exhausting memory under concurrent logins (the container may have 512 MB and 1–2 vCPUs; ten concurrent 64 MiB hashes would not fit). Record the chosen parameters in Phase 3. Rehash on login when parameters change.
-- Minimum 8 characters; check against a small deny-list of common passwords; no composition rules.
-- Login and register endpoints are rate-limited per IP and per identifier. **Limitation:** the MVP limiter keeps counters in process memory, and the backend runs 2–4 uvicorn workers, so the effective limit is up to N× the configured value and resets on deploy. This is accepted for the pilot; a shared store (database table or Redis) is the upgrade path if abuse appears. The Argon2 cost is the second line of defence.
+- Argon2id via `argon2-cffi`, parameters in `app/core/passwords.py` (the only module that knows about Argon2): **m = 19 MiB, t = 2, p = 1**, 32-byte hash, 16-byte salt — the OWASP minimum the architecture starts from. Measured at ~28 ms per verification on a development laptop (i7-10610U); the target of roughly 100–250 ms on the deployed Railway instance has not been measured yet (no Railway environment exists), so raise `t` (then `m`) there before the pilot, staying within memory under concurrent logins (512 MB / 1–2 vCPU containers). `needs_rehash` + rehash-on-login means changing the constants is enough; old hashes are replaced as users log in. Passwords are capped at 128 characters so a login cannot make the server hash megabytes.
+- Verification is constant-time inside the library. A login for an unknown identifier still verifies the password against a dummy hash so timing does not reveal whether the account exists, and unknown identifier, wrong password and deactivated user all produce the same 401 `INVALID_CREDENTIALS`.
+- Minimum 8 characters; a small deny-list of common passwords (`app/schemas/auth.py`); no composition rules. The change-password endpoint requires the current password and rejects an unchanged one.
+- **Rate limiting** is an in-house sliding-window limiter (`app/core/ratelimit.py`, ~50 lines) rather than `slowapi`: it needs no dependency, keys on whatever the endpoint chooses, and returns the project's error envelope (429 `RATE_LIMITED` + `Retry-After`). Keys: login per IP *and* per identifier (counted whether or not the account exists, so a 429 says nothing about existence), register per IP, refresh per IP, change-password per user. Rejected attempts are not counted, so a blocked client is not blocked longer by retrying. **Limitation:** counters live in process memory, and the backend runs 2–4 uvicorn workers, so the effective limit is up to N times the configured value and resets on deploy. This is accepted for the pilot; a shared store (database table or Redis) is the upgrade path if abuse appears. The Argon2 cost is the second line of defence. Behind Railway's proxy uvicorn must run with `--proxy-headers`/`--forwarded-allow-ips` so the per-IP key is the client's address (Phase 15).
 
 ### 5.3 Authorization
 - Role checks are FastAPI dependencies (`require_role`), applied per route.
@@ -275,7 +284,7 @@ Designed now, built later:
   ```json
   { "error": { "code": "PRODUCT_NOT_FOUND", "message": "Product not found", "details": null, "request_id": "…" } }
   ```
-- Domain exceptions (`NotFoundError`, `ValidationError`, `PermissionDeniedError`, `ConflictError`, `InsufficientStockError`, `CreditLimitExceededError`, `AIUnavailableError`) subclass `app.core.errors.AppError` (which carries `status_code`, `code`, a user-safe `message` and optional `details`) and are mapped to HTTP by the handlers in that module. Framework-level failures use fixed codes: `VALIDATION_ERROR` (422, with `details` = list of `{loc, msg, type}`), `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`, `FORBIDDEN`, `CONFLICT`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `HTTP_ERROR` (other statuses) and `INTERNAL_ERROR` (500).
+- Domain exceptions (`UnauthorizedError`, `PermissionDeniedError`, `NotFoundError`, `ConflictError`, `RateLimitedError`, and later `ValidationError`, `InsufficientStockError`, `CreditLimitExceededError`, `AIUnavailableError`) subclass `app.core.errors.AppError` (which carries `status_code`, `code`, a user-safe `message`, optional `details` and optional response `headers` such as `WWW-Authenticate` or `Retry-After`) and are mapped to HTTP by the handlers in that module. A subclass's default `code` can be overridden per instance for a more specific stable code: authentication uses `INVALID_CREDENTIALS`, `INVALID_REFRESH_TOKEN` (401), `PASSWORD_CHANGE_REQUIRED`, `BUSINESS_INACTIVE`, `MEMBERSHIP_INACTIVE`, `CSRF_REJECTED` (403), `INVALID_CURRENT_PASSWORD` (400) and `ACCOUNT_EXISTS` (409). Framework-level failures use fixed codes: `VALIDATION_ERROR` (422, with `details` = list of `{loc, msg, type}`), `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`, `FORBIDDEN`, `CONFLICT`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `HTTP_ERROR` (other statuses) and `INTERNAL_ERROR` (500).
 - Pydantic validation errors are reformatted into the envelope with field-level `details`.
 - Unhandled exceptions → 500 with a generic message and `request_id`; full details go to logs and Sentry. Stack traces, SQL, and internal identifiers never reach the client (CLAUDE.md rule 25).
 - Cross-tenant access → 404, never 403.
@@ -299,11 +308,15 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 | `APP_NAME` | no (`SokoWise API`) | OpenAPI title |
 | `API_HOST`, `API_PORT` | no (`0.0.0.0`, `8000`) | bind address for the container `CMD`; Railway's `PORT` mapping is decided in Phase 15 |
 | `DATABASE_URL` | yes | `postgresql+asyncpg://…` |
-| `JWT_SECRET` | yes | ≥ 32 random bytes |
-| `ACCESS_TOKEN_TTL_MINUTES` | no (15) | |
-| `REFRESH_TOKEN_TTL_DAYS` | no (30) | |
-| `CORS_ORIGINS` | yes | comma-separated frontend origins |
-| `COOKIE_DOMAIN`, `COOKIE_SECURE` | prod | refresh cookie settings |
+| `JWT_SECRET` | yes | ≥ 32 characters; no default anywhere, including tests (each test/CI environment sets its own throwaway value) |
+| `JWT_ISSUER`, `JWT_AUDIENCE` | no (unset) | when set, added to and verified on every access token |
+| `ACCESS_TOKEN_TTL_MINUTES` | no (15) | 1–60 |
+| `REFRESH_TOKEN_TTL_DAYS` | no (30) | 1–90 |
+| `CORS_ORIGINS` | yes | comma-separated frontend origins; also the CSRF Origin allow-list |
+| `CORS_ORIGIN_REGEX` | no | regex for origins that cannot be listed (Vercel previews); preview API environment only |
+| `COOKIE_DOMAIN` | no | refresh cookie `Domain`; host-only when unset |
+| `COOKIE_SECURE` | no (true) | must be true in production (enforced); `false` only for local http |
+| `COOKIE_SAMESITE` | no (`lax`) | `lax` / `strict` / `none`; `none` requires `COOKIE_SECURE=true` (enforced) |
 | `ANTHROPIC_API_KEY` | yes (AI) | server-side only |
 | `AI_MODEL` | no (`claude-opus-5`) | |
 | `AI_DAILY_MESSAGE_LIMIT` | no (10) | per-business user messages per day; operator-controlled |
@@ -311,7 +324,10 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 | `AI_MONTHLY_BUDGET_USD` | no | global hard cap |
 | `SENTRY_DSN` | prod | |
 | `LOG_LEVEL` | no (INFO) | |
-| `RATE_LIMIT_LOGIN_PER_MINUTE` | no (5) | |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | no (5) | per IP and per identifier |
+| `RATE_LIMIT_REGISTER_PER_MINUTE` | no (5) | per IP |
+| `RATE_LIMIT_REFRESH_PER_MINUTE` | no (30) | per IP (shops share an address) |
+| `RATE_LIMIT_PASSWORD_CHANGE_PER_MINUTE` | no (5) | per user |
 | Frontend: `VITE_API_BASE_URL` | yes | |
 | Frontend: `VITE_SENTRY_DSN` | prod | |
 
@@ -337,7 +353,7 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 | Frontend | Vitest + React Testing Library | forms, money formatting, API client; Playwright for the core journeys (Phase 14) |
 | Security | CI | dependency audit (`pip-audit`, `npm audit`), secret scanning, ruff security rules |
 
-SQLite is not used for tests: NUMERIC semantics, partial indexes and `FOR UPDATE` differ. Database tests live in `backend/tests/db/`, carry the `db` marker, and run against the PostgreSQL named by `TEST_DATABASE_URL` (skipped with a visible reason when unset; CI always sets it). The session fixture runs `alembic upgrade head`; each test runs inside an outer transaction that is rolled back (`join_transaction_mode="create_savepoint"`). Async tests use the `anyio` pytest plugin that ships with Starlette's dependencies; Alembic commands invoked from async tests run in a worker thread because Alembic drives its own event loop.
+SQLite is not used for tests: NUMERIC semantics, partial indexes and `FOR UPDATE` differ. Database tests live in `backend/tests/db/`, carry the `db` marker, and run against the PostgreSQL named by `TEST_DATABASE_URL` (skipped with a visible reason when unset; CI always sets it). The session fixture runs `alembic upgrade head`; each test runs inside an outer transaction that is rolled back (`join_transaction_mode="create_savepoint"`). Async tests use the `anyio` pytest plugin that ships with Starlette's dependencies; Alembic commands invoked from async tests run in a worker thread because Alembic drives its own event loop. API tests (`api` / `api_factory` fixtures) send requests through httpx's ASGI transport in the test's event loop, with `get_session` overridden to the test's own session, so a test can call endpoints and then inspect or edit rows in the same rolled-back transaction; `api_factory(**settings)` builds an app with overridden settings (low rate limits, cookie modes). Because the app shares the session, a test reading rows the app bulk-updated must query with `populate_existing=True`. Tests that need real concurrency (two refreshes racing) commit through separate connections and delete their rows afterwards.
 
 Definition of done for a feature: tests for happy path, validation failure, permission denial, and cross-tenant access.
 

@@ -6,7 +6,7 @@ SokoWise is an AI-powered business copilot for Kenyan small businesses (dukas, b
 Frontend: React 19 + TypeScript + Vite + Tailwind + shadcn/ui. Backend: Python 3.12 + FastAPI + SQLAlchemy 2.x (async) + Alembic + Pydantic. Database: PostgreSQL. Auth: JWT access tokens + rotating refresh tokens, Argon2id. AI: Anthropic Claude API (Python SDK, server-side only). Infra: Docker Compose locally; Vercel (frontend), Railway (backend + Postgres), GitHub Actions, Sentry.
 
 ## Current state
-Phases 1–2 implemented: `backend/` (FastAPI app factory, settings, JSON logging, error envelope, request-ID middleware, health endpoints, async SQLAlchemy engine/session, the 16 MVP models in `app/models/`, one Alembic migration, PostgreSQL-backed tests) and `frontend/` (the Vite scaffold, unchanged). No auth, business endpoints or AI exist yet. Check `docs/ROADMAP.md` for the active phase before starting work, and do not start a later phase without being asked.
+Phases 1–3 implemented: `backend/` (FastAPI app factory, settings, JSON logging, error envelope, request-ID middleware, health endpoints, async SQLAlchemy engine/session, the 16 MVP models in `app/models/`, one Alembic migration, PostgreSQL-backed tests, and authentication: Argon2id passwords, JWT access tokens, rotating refresh tokens in an HttpOnly cookie, `/api/v1/auth/*`, `get_current_user` / `get_business_context` / `require_role` in `app/api/deps.py`) and `frontend/` (the Vite scaffold plus a dev proxy for `/api`). No business endpoints or AI exist yet. Check `docs/ROADMAP.md` for the active phase before starting work, and do not start a later phase without being asked.
 
 ## Rules
 1. Read the relevant documentation before making architectural changes.

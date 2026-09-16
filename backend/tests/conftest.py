@@ -17,6 +17,8 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
+# A test-only signing key; production refuses to start without a real one.
+os.environ.setdefault("JWT_SECRET", "test-only-jwt-secret-with-at-least-32-characters")
 os.environ.setdefault(
     "DATABASE_URL",
     TEST_DATABASE_URL or "postgresql+asyncpg://sokowise:sokowise@127.0.0.1:5432/sokowise_test",

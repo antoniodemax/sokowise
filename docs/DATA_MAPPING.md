@@ -421,6 +421,13 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - Enum values are enforced by named CHECK constraints (`ck_<table>_<column>`); columns are `VARCHAR`.
 - ORM relationships exist only where later phases obviously need them (`Sale.items`, `Sale.payments`, `BusinessMembership.user/business`, `User.memberships`, `Product.category`) and are all `lazy="raise"`.
 
+### 9.1 Phase 3 notes (no schema change)
+
+- `users.phone` is stored in E.164 after normalisation in `app/schemas/identifiers.py` (Kenyan local forms `07…`, `01…`, `254…` become `+254…`); `users.email` is lower-cased. The same normalisation runs at login, so the identifier the user typed at registration always finds the account.
+- `users.password_hash` holds the Argon2id encoded string (`$argon2id$v=19$m=19456,t=2,p=1$…`, ~97 characters, well within 255).
+- `refresh_tokens.token_hash` is the SHA-256 hex digest (64 characters) of a 256-bit random token; `family_id` equals the first token's `id`; `parent_id` links each rotation to the token it replaced; `user_agent` (truncated to 255) and `ip` (45) are recorded from the request. Rotation is a single `UPDATE … RETURNING` so concurrent refreshes cannot both succeed (ARCHITECTURE §5.1).
+- Registration inserts `users`, `businesses` and the OWNER `business_memberships` row in one transaction; uniqueness of phone/email is left to `uq_users_phone` / `uq_users_email`, and a violation rolls the whole registration back.
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.

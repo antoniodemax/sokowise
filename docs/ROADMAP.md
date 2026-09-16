@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.2 — Phase 0 (architecture review fixes applied) |
+| Status | Draft v0.3 — Phase 3 implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -70,25 +70,32 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 3 — Authentication ☐
+## Phase 3 — Authentication ◐ (implemented 2026-09-16; verified against local PostgreSQL 16.15; Argon2 cost on Railway, CI run and Compose start pending)
 **Objective:** secure registration, login, refresh, logout.
 
 **Tasks**
-- Argon2id hashing (`argon2-cffi`) with rehash-on-login.
-- JWT access tokens (PyJWT); opaque rotating refresh tokens stored hashed; family revocation on reuse.
-- Endpoints: `POST /auth/register` (creates user + business + OWNER membership atomically), `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/change-password`, `GET /auth/me`.
-- Dependencies: `get_current_user`, `get_business_context`, `require_role`.
-- Rate limiting for login/register; decide library vs in-house and record the reason; document the per-process limitation (ARCHITECTURE §5.2).
-- Measure Argon2id cost on the target instance starting from m=19 MiB, t=2, p=1; record the chosen parameters.
-- `must_change_password` gate: forced change at first login for owner-created users.
-- Decide cookie/domain strategy (ARCHITECTURE §5.1) and document it.
-- **Deferred decisions to make in this phase:** Vercel preview authentication (cross-site cookies) and shared-device session handling (PRD A8). Both are listed in ARCHITECTURE §5.1; neither is decided yet.
+- Argon2id hashing (`argon2-cffi`) with rehash-on-login — `app/core/passwords.py`; m=19 MiB, t=2, p=1 (ARCHITECTURE §5.2).
+- JWT access tokens (PyJWT); opaque rotating refresh tokens stored hashed; family revocation on reuse — `app/core/tokens.py`, `app/repositories/refresh_tokens.py`, `app/services/auth.py`.
+- Endpoints under `/api/v1/auth`: `POST register` (creates user + business + OWNER membership atomically), `POST login`, `POST refresh`, `POST logout`, `POST logout-all`, `POST change-password`, `GET me`.
+- Dependencies: `get_access_claims`, `get_current_user`, `get_business_context`, `require_role` (+ `require_owner`, `require_member`) in `app/api/deps.py`.
+- Rate limiting: in-house sliding-window limiter, no library (reason and keys in ARCHITECTURE §5.2); per-process limitation documented there.
+- Argon2id cost: ~28 ms per verification on a development laptop at the baseline parameters. **Not yet measured on Railway** (no environment exists); tune `t`/`m` there before the pilot — rehash-on-login makes that a constants change.
+- `must_change_password` gate: `get_business_context` returns 403 `PASSWORD_CHANGE_REQUIRED`; change-password, logout, logout-all and refresh stay available (ARCHITECTURE §3.3 3a).
+- Cookie/domain strategy, Vercel preview authentication and shared-device handling: **decided**, see ARCHITECTURE §5.1 (per-environment table; previews use a separate preview API environment with `SameSite=None` + CSRF header; shared devices rely on logout / logout-all in MVP).
+
+**Notes recorded while implementing (not in the PRD; PRD §19 candidates)**
+- Registration collects `full_name`, `phone` (required, E.164; Kenyan local forms `07…`/`01…`/`254…` are normalised to `+254…`), optional `email`, `password`, `business_name`, optional `business_type` (defaults to `GENERAL_SHOP`) and optional `timezone` (defaults to `Africa/Nairobi`). Login takes one `identifier` field (phone or email). PRD FR-B1/FR-B2 are the source; the defaults are implementation choices.
+- Duplicate phone/email at registration is 409 `ACCOUNT_EXISTS` without saying which identifier clashed (PRD FR-C1 asks for 409). Business names are not unique (DATA_MAPPING §3.1).
+- A user with several active memberships (not possible through the API yet) logs into the oldest one; business switching is future work.
+- The Vite dev server proxies `/api` to the backend (`frontend/vite.config.ts`) — the only frontend change in this phase.
+- `alembic/env.py` now calls `fileConfig(..., disable_existing_loggers=False)` so in-process migrations (tests) do not silence the `app.*` loggers.
 
 **Dependencies:** Phase 2.
 
 **Completion criteria**
-- Tests: register→login→refresh→logout flow; refresh reuse revokes family; deactivated user and inactive business rejected; wrong password rate-limited; tokens for business A rejected by membership check when membership is inactive; role is taken from the membership, not the token; `must_change_password` blocks other endpoints.
-- No password or token material appears in logs.
+- Tests: register→login→refresh→logout flow; refresh reuse revokes family; deactivated user and inactive business rejected; wrong password rate-limited; tokens for business A rejected by membership check when membership is inactive; role is taken from the membership, not the token; `must_change_password` blocks other endpoints. — **Met** (`backend/tests/test_{passwords,tokens,ratelimit,identifiers}.py`, `backend/tests/db/test_auth_*.py`; 258 tests pass locally).
+- No password or token material appears in logs. — **Met** (`tests/db/test_auth_logging.py` renders every record through the JSON formatter and asserts).
+- Pending before marking ☑: CI green on GitHub, Compose start (Docker socket still unavailable on the development machine), Argon2 cost measured on Railway.
 
 ---
 
