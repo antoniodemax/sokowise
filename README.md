@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** the business backend is complete for MVP; the frontend foundation and the core business workflows (sell, sales, products, inventory, customers, expenses, analytics, settings) are in place; the AI copilot is next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** the business backend is complete for MVP; the frontend foundation, the core business workflows (sell, sales, products, inventory, customers, expenses, analytics, settings) and the public homepage are in place; the AI copilot is next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 
@@ -27,7 +27,7 @@ AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, b
 
 ```
 backend/        FastAPI service (uv, ruff, mypy, pytest) — see backend/README.md
-frontend/       Vite + React + TypeScript app (npm) — auth, dashboard, sell, sales, products, inventory, customers, expenses, analytics, settings
+frontend/       Vite + React + TypeScript app (npm) — public homepage, auth, dashboard, sell, sales, products, inventory, customers, expenses, analytics, settings
 docs/           product and engineering documentation (source of truth)
 docker/         local development helpers (empty until needed)
 scripts/        repo-level scripts (empty until needed)

@@ -29,7 +29,7 @@ export function RequireAuth() {
 export function RedirectIfAuthenticated() {
   const { session, restoring } = useAuth()
   if (restoring) return <Restoring />
-  if (session) return <Navigate to={session.user.must_change_password ? '/change-password' : '/'} replace />
+  if (session) return <Navigate to={session.user.must_change_password ? '/change-password' : '/dashboard'} replace />
   return <Outlet />
 }
 

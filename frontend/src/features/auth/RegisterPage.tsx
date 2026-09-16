@@ -40,7 +40,7 @@ export default function RegisterPage() {
     setServerError(null)
     try {
       await registerBusiness({ ...values, email: values.email || null })
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     } catch (error) {
       const perField = fieldErrors(error)
       for (const [field, message] of Object.entries(perField)) {

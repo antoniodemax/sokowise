@@ -10,6 +10,7 @@ import { AuthLayout } from './layouts/AuthLayout'
 const LoginPage = lazy(() => import('@/features/auth/LoginPage'))
 const RegisterPage = lazy(() => import('@/features/auth/RegisterPage'))
 const ChangePasswordPage = lazy(() => import('@/features/auth/ChangePasswordPage'))
+const HomePage = lazy(() => import('@/features/marketing/HomePage'))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
 const SalesPage = lazy(() => import('@/features/sales/SalesPage'))
 const SellPage = lazy(() => import('@/features/sales/SellPage'))
@@ -37,6 +38,8 @@ export function AppRouter() {
     <BrowserRouter>
       <Suspense fallback={<PageFallback />}>
         <Routes>
+          {/* The public site: no session needed, no guard. */}
+          <Route path="/" element={<HomePage />} />
           <Route element={<RedirectIfAuthenticated />}>
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<LoginPage />} />
@@ -48,7 +51,7 @@ export function AppRouter() {
               <Route path="/change-password" element={<ChangePasswordPage />} />
             </Route>
             <Route element={<AppShell />}>
-              <Route index element={<DashboardPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/sales" element={<SalesPage />} />
               <Route path="/sales/new" element={<SellPage />} />
               <Route path="/sales/:saleId" element={<SaleDetailPage />} />

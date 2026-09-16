@@ -30,7 +30,7 @@ export default function LoginPage() {
     try {
       const session = await login(values)
       const from = (location.state as { from?: string } | null)?.from
-      navigate(session.user.must_change_password ? '/change-password' : (from ?? '/'), { replace: true })
+      navigate(session.user.must_change_password ? '/change-password' : (from ?? '/dashboard'), { replace: true })
     } catch (error) {
       setServerError(describeError(error))
     }

@@ -24,7 +24,7 @@ function renderAt(path: string, session: Session | null, restoring = false) {
           </Route>
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<p>change password page</p>} />
-            <Route path="/" element={<p>dashboard page</p>} />
+            <Route path="/dashboard" element={<p>dashboard page</p>} />
             <Route element={<RequireOwner />}>
               <Route path="/expenses" element={<p>expenses page</p>} />
             </Route>
@@ -37,15 +37,15 @@ function renderAt(path: string, session: Session | null, restoring = false) {
 
 describe('route guards', () => {
   it('sends anonymous visitors to the login page', () => {
-    renderAt('/', null)
+    renderAt('/dashboard', null)
     expect(screen.getByText('login page')).toBeInTheDocument()
   })
   it('shows a restoring state before the first refresh settles', () => {
-    renderAt('/', null, true)
+    renderAt('/dashboard', null, true)
     expect(screen.getByRole('status')).toHaveTextContent('Restoring your session')
   })
   it('lets a signed-in owner through and keeps them off the login page', () => {
-    renderAt('/', owner)
+    renderAt('/dashboard', owner)
     expect(screen.getByText('dashboard page')).toBeInTheDocument()
   })
   it('redirects signed-in users away from login', () => {
@@ -53,7 +53,7 @@ describe('route guards', () => {
     expect(screen.getByText('dashboard page')).toBeInTheDocument()
   })
   it('forces the password-change screen while must_change_password is set', () => {
-    renderAt('/', { ...owner, user: { ...owner.user, must_change_password: true } })
+    renderAt('/dashboard', { ...owner, user: { ...owner.user, must_change_password: true } })
     expect(screen.getByText('change password page')).toBeInTheDocument()
   })
   it('keeps staff out of owner-only sections without a backend round trip', () => {

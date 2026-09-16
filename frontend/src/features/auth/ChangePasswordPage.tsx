@@ -43,7 +43,7 @@ export default function ChangePasswordPage() {
     try {
       await changePassword({ current_password: values.current_password, new_password: values.new_password })
       toast.success('Password changed')
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     } catch (error) {
       if (error instanceof ApiError && error.code === 'INVALID_CURRENT_PASSWORD') {
         setError('current_password', { message: 'That is not your current password' })

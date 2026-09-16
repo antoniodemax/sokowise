@@ -11,7 +11,7 @@ export default function NotFoundPage() {
       title="Page not found"
       description="That link does not go anywhere in SokoWise."
       action={
-        <Link to="/" className={buttonVariants({ variant: 'outline' })}>
+        <Link to="/dashboard" className={buttonVariants({ variant: 'outline' })}>
           Back to the dashboard
         </Link>
       }
