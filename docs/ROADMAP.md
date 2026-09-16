@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.4 — Phase 4 implemented |
+| Status | Draft v0.5 — Phase 5 (catalogue half) implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -125,24 +125,31 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 5 — Products and inventory ☐
+## Phase 5 — Products and inventory ◐ (categories + products implemented 2026-09-16; inventory endpoints pending)
 **Objective:** catalogue and stock ledger.
 
 **Tasks**
-- Categories CRUD; products CRUD with archive; search endpoint (name/SKU/barcode prefix). Product creation accepts `opening_stock` + `opening_unit_cost` and writes the `INITIAL` movement atomically (PRD FR-D6); `stock_quantity` is never writable directly.
-- Inventory movements: `POST /inventory/restock`, `POST /inventory/adjust`, `POST /inventory/initial`, `GET /inventory/movements?product_id=`.
-- `products.stock_quantity` maintained transactionally with row locks.
-- Low-stock list endpoint.
-- `scripts/recompute_caches.py` to rebuild `stock_quantity` from the ledger.
-- Audit: price change, restock, adjustment.
+- ☑ Categories CRUD; products CRUD with archive; search (`GET /products?q=` prefix on name/SKU/barcode). Product creation accepts `opening_stock` + `opening_unit_cost` and writes the `INITIAL` movement atomically (PRD FR-D6); `stock_quantity` is never writable directly. Rules in ARCHITECTURE §5.6.
+- ☑ `services/inventory.apply_movement`: the one primitive that appends a movement and maintains `products.stock_quantity` under the product row lock (BR-11). The endpoints below build on it.
+- ☐ Inventory movements: `POST /inventory/restock`, `POST /inventory/adjust`, `POST /inventory/initial`, `GET /inventory/movements?product_id=`.
+- ☐ Low-stock list endpoint.
+- ☐ `scripts/recompute_caches.py` to rebuild `stock_quantity` from the ledger.
+- ☑ Audit: price change (`product.price_change`) plus `product.archive` / `product.unarchive`. ☐ restock, adjustment.
+
+**Notes recorded while implementing the catalogue half**
+- Categories have no archive state (DATA_MAPPING §3.5, PRD FR-D4 "simple labels"); delete is allowed only while no product references the category (409 `CATEGORY_IN_USE`). No default categories are seeded.
+- `opening_unit_cost` defaults to `cost_price`; when neither is given with `opening_stock` the request is a 422, because INITIAL movements carry a unit cost (DATA_MAPPING §3.7).
+- Switching `track_inventory` to false is refused while `stock_quantity` ≠ 0 (409 `PRODUCT_HAS_STOCK`): adjust to zero first (an inventory-phase operation).
+- Product name/category changes are not audited (PRD FR-K1 lists price changes); archive/unarchive are, because they change what can be sold.
+- No migration: the Phase 2 schema (partial unique indexes, composite category FK, CHECKs) already carries every invariant.
 
 **Dependencies:** Phase 4.
 
 **Completion criteria**
-- Concurrency test: two simultaneous restocks/adjustments produce the correct final quantity.
-- Recompute script yields identical values to cached column on fixture data.
-- Tests: untracked products create no movements and are not stock-validated; `quantity_after` follows commit order for backdated movements.
-- Role and isolation tests (registered with the Phase 4 helper).
+- Concurrency test: two simultaneous restocks/adjustments produce the correct final quantity. — pending (inventory endpoints).
+- Recompute script yields identical values to cached column on fixture data. — pending.
+- Tests: untracked products create no movements and are not stock-validated (☑ for creation); `quantity_after` follows commit order for backdated movements (pending).
+- Role and isolation tests (registered with the Phase 4 helper). — ☑ for categories and products (`tests/db/test_categories_api.py`, `test_products_api.py`, `test_catalog_concurrency.py`, `test_tenant_isolation.py`; 368 tests pass locally).
 
 ---
 

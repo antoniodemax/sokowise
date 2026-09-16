@@ -46,6 +46,17 @@ Business and members (OWNER-only, `Authorization: Bearer …`; docs/ARCHITECTURE
 | `PATCH /api/v1/users/{user_id}` | change `role` / `is_active`; the last active owner is protected (409 `LAST_OWNER`) |
 | `POST /api/v1/users/{user_id}/reset-password` | set a STAFF member's temporary password (204) |
 
+Catalogue (members read, OWNER writes; docs/ARCHITECTURE.md §5.6):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET/POST /api/v1/categories`, `GET/PATCH/DELETE /api/v1/categories/{id}` | per-business labels; delete only while unused |
+| `GET /api/v1/products?q=&category_id=&include_archived=&limit=` | list / prefix search on name, SKU, barcode |
+| `POST /api/v1/products` | create; optional `opening_stock` + `opening_unit_cost` write the INITIAL movement atomically |
+| `GET/PATCH /api/v1/products/{id}` | read; update fields, reprice (audited), archive with `{"is_active": false}` |
+
+Money and quantities are decimal strings in JSON (`"150.00"`, `"12.500"`).
+
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
 `sokowise_refresh` HttpOnly cookie; the refresh token is never in the body. `JWT_SECRET` (≥ 32
 characters) is required; with `COOKIE_SECURE=false` the cookie works over plain http locally.
@@ -91,11 +102,13 @@ app/
 │                      `transaction()` helper used by services
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
 ├── schemas/           Pydantic request/response models (auth), identifier normalisation
-├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs)
-├── services/          transactions and rules (auth, business, members, audit)
+├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs,
+│                      categories, products, inventory movements)
+├── services/          transactions and rules (auth, business, members, audit, categories,
+│                      products, inventory primitive)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
-                       v1/ (routers mounted at /api/v1: auth, business, users)
+                       v1/ (routers mounted at /api/v1: auth, business, users, categories, products)
 alembic/               migrations (async env); alembic.ini holds no URL
 tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api`/`tenants` fixtures;
                        register tenant-scoped endpoints in tests/db/test_tenant_isolation.py)

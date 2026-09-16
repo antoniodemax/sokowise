@@ -434,6 +434,13 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - `business_memberships.is_active=false` is the "deactivated staff" state; `users.is_active` stays true. The last active OWNER of a business cannot be demoted or deactivated; the service locks the `businesses` row (`FOR UPDATE`) while checking.
 - `audit_logs.action` values in use: `business.update`, `user.create`, `user.role_change`, `user.deactivate`, `user.reactivate`, `user.password_reset` (`<entity>.<verb>`); `entity_type` is `business` or `user`; `before`/`after` contain changed fields only and never secrets or phone numbers.
 
+### 9.3 Phase 5 notes (no schema change)
+
+- `products.stock_quantity` is written only by `services/inventory.apply_movement`, in the same transaction as the movement row, with the product row locked. Product creation with `opening_stock` sets it via the `INITIAL` movement; every other product write leaves it alone.
+- `inventory_movements.total_cost` is `|quantity_delta| × unit_cost` rounded to 2 dp; `occurred_at` defaults to the commit time for INITIAL-at-creation.
+- The SKU and barcode unique indexes are not partial on `is_active`, so an archived product keeps its SKU/barcode reserved; only the *name* is freed by archiving (partial index `WHERE is_active`).
+- `audit_logs.action` values added: `product.price_change`, `product.archive`, `product.unarchive`; `entity_type` `product`; Decimal values in `before`/`after` are stored as strings.
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.
