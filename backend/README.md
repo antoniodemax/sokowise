@@ -108,6 +108,20 @@ or `period=custom&date_from=&date_to=` (local calendar days in the business time
 
 `uv run --env-file ../.env python scripts/recompute_caches.py [--apply]` checks (or repairs) every business's stock cache.
 
+Expenses (OWNER-only; docs/ARCHITECTURE.md §5.12):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/expenses?date_from=&date_to=&category=&payment_method=&include_deleted=&limit=` | newest first; local calendar days |
+| `POST /api/v1/expenses` | amount, category (free text, upper-cased), CASH/MPESA, optional reference/note/incurred_at |
+| `GET/PATCH/DELETE /api/v1/expenses/{id}` | detail; edit (audited); soft delete (audited) |
+| `GET /api/v1/expenses/categories` | suggested categories plus the ones this business has used |
+| `GET /api/v1/expenses/export.csv` | streamed CSV with the listing's filters |
+| `GET /api/v1/analytics/expenses` | period total, count, by category, by method |
+
+The financial overview is `GET /api/v1/analytics/summary`: revenue, cash collected, receivables, COGS,
+gross profit, expenses and net profit (= gross profit − expenses), all in the business timezone.
+
 Money and quantities are decimal strings in JSON (`"150.00"`, `"12.500"`).
 
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
@@ -156,13 +170,15 @@ app/
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
 ├── schemas/           Pydantic request/response models (auth), identifier normalisation
 ├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs,
-│                      categories, products, inventory movements, customers, credit, sales)
+│                      categories, products, inventory movements, customers, credit, sales,
+│                      expenses)
 ├── services/          transactions and rules (auth, business, members, audit, categories,
-│                      products, inventory operations, customers, credit ledger, sales, money)
+│                      products, inventory operations, customers, credit ledger, sales, money,
+│                      expenses)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
                        v1/ (routers mounted at /api/v1: auth, business, users, categories,
-                       products, customers, debtors, sales, inventory, analytics)
+                       products, customers, debtors, sales, inventory, analytics, expenses)
 ├── analytics/         read-only SQL aggregates and period helpers (business timezone)
 alembic/               migrations (async env; two revisions); alembic.ini holds no URL
 scripts/               management commands (recompute_caches.py)

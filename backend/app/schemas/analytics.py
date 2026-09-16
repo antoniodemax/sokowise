@@ -39,6 +39,8 @@ class BucketOut(BaseModel):
     lines_missing_cost: int
     gross_profit: Decimal
     cash_collected: Decimal
+    expenses: Decimal
+    net_profit: Decimal
 
 
 class TimeseriesOut(BaseModel):
@@ -75,3 +77,17 @@ class CategoryPerformanceOut(BaseModel):
     cogs: Decimal
     gross_profit: Decimal
     lines_missing_cost: int
+
+
+class ExpenseGroupOut(BaseModel):
+    key: str  # category name (free text, upper-cased) or payment method
+    total: Decimal
+    count: int
+
+
+class ExpenseBreakdownOut(BaseModel):
+    period: PeriodOut
+    total: Decimal
+    count: int
+    by_category: list[ExpenseGroupOut]  # largest first, then name
+    by_method: dict[str, Decimal]  # CASH / MPESA

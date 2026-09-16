@@ -13,8 +13,9 @@ Definitions (FR-I1):
     cash_collected CONFIRMED CASH/MPESA tenders of those sales + credit REPAYMENTs
                    with occurred_at in the period, by method; CREDIT tenders excluded
     tender_split   Σ payments.amount by method (CASH, MPESA, CREDIT)
-    expenses       Σ non-deleted expenses with incurred_at in the period
-    net_profit     gross_profit - expenses
+    expenses       Σ non-deleted expenses with incurred_at in the period (below gross profit;
+                   never subtracted from revenue)
+    net_profit     gross_profit - expenses                   (FR-I1's term)
 Lines with unknown cost contribute 0 to COGS and are reported as
 `lines_missing_cost` / `products_missing_cost` (BR-16). Product revenue is
 `line_total - discount_allocated` (BR-14), so Σ product profit = period profit.
@@ -42,7 +43,14 @@ from app.models import (
     Sale,
     SaleItem,
 )
-from app.models.enums import CreditEntryType, PaymentMethod, PaymentStatus, SaleStatus
+from app.models.enums import (
+    CreditEntryType,
+    MoneyReceivedMethod,
+    PaymentMethod,
+    PaymentStatus,
+    SaleStatus,
+)
+from app.repositories import expenses as expense_repo
 from app.services.money import round_money
 
 ZERO = Decimal("0.00")
@@ -243,6 +251,8 @@ class Bucket:
     lines_missing_cost: int
     gross_profit: Decimal
     cash_collected: Decimal
+    expenses: Decimal
+    net_profit: Decimal
 
 
 def _bucket_expr(
@@ -310,11 +320,25 @@ async def timeseries(
     for bucket, total in repayment_rows:
         cash[bucket] = cash.get(bucket, ZERO) + _money(total)
 
+    expense_bucket = _bucket_expr(Expense.incurred_at, granularity, period.timezone).label("bucket")
+    expense_rows = await session.execute(
+        select(expense_bucket, func.sum(Expense.amount))
+        .where(
+            Expense.business_id == business_id,
+            Expense.deleted_at.is_(None),
+            Expense.incurred_at >= period.start,
+            Expense.incurred_at < period.end,
+        )
+        .group_by(expense_bucket)
+    )
+    expenses = {bucket: _money(total) for bucket, total in expense_rows}
+
     result: list[Bucket] = []
-    for bucket in sorted(set(buckets) | set(cash)):
-        sales = buckets.get(bucket, (0, ZERO, ZERO))
+    for bucket in sorted(set(buckets) | set(cash) | set(expenses)):
+        count, revenue, discounts = buckets.get(bucket, (0, ZERO, ZERO))
         cogs, missing = costs.get(bucket, (ZERO, 0))
-        count, revenue, discounts = sales
+        gross_profit = revenue - cogs
+        spent = expenses.get(bucket, ZERO)
         result.append(
             Bucket(
                 bucket_start=bucket,
@@ -323,8 +347,10 @@ async def timeseries(
                 discounts=discounts,
                 cogs=cogs,
                 lines_missing_cost=missing,
-                gross_profit=revenue - cogs,
+                gross_profit=gross_profit,
                 cash_collected=cash.get(bucket, ZERO),
+                expenses=spent,
+                net_profit=gross_profit - spent,
             )
         )
     return result
@@ -495,13 +521,57 @@ async def category_performance(
     ]
 
 
+# --- expenses (FR-I6) -------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ExpenseGroup:
+    key: str  # category name or payment method
+    total: Decimal
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExpenseBreakdown:
+    total: Decimal
+    count: int
+    by_category: list[ExpenseGroup]
+    by_method: dict[str, Decimal]
+
+
+async def expense_breakdown(
+    session: AsyncSession, business_id: uuid.UUID, period: Period
+) -> ExpenseBreakdown:
+    """Non-deleted expenses with `incurred_at` in the period, by category and by method."""
+    by_category = [
+        ExpenseGroup(key=category, total=_money(total), count=count)
+        for category, total, count in await expense_repo.totals_by_category(
+            session, business_id, incurred_from=period.start, incurred_until=period.end
+        )
+    ]
+    by_method = {method.value: ZERO for method in MoneyReceivedMethod}
+    for method, total, _count in await expense_repo.totals_by_method(
+        session, business_id, incurred_from=period.start, incurred_until=period.end
+    ):
+        by_method[method.value] = _money(total)
+    return ExpenseBreakdown(
+        total=sum((g.total for g in by_category), ZERO),
+        count=sum(g.count for g in by_category),
+        by_category=by_category,
+        by_method=by_method,
+    )
+
+
 __all__ = [
     "Bucket",
     "CategoryPerformance",
+    "ExpenseBreakdown",
+    "ExpenseGroup",
     "ProductPerformance",
     "SlowProduct",
     "Summary",
     "category_performance",
+    "expense_breakdown",
     "product_performance",
     "slow_products",
     "summary",

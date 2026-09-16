@@ -3,7 +3,7 @@
 To register a new resource type, add an `IsolationCase` to `CASES`. Registered:
 business members (Phase 4), categories and products (Phase 5), customers (Phase 6),
 customer accounts — ledger, repayments, adjustments (Phase 7), sales (Phase 8), inventory
-movements (Phase 9).
+movements (Phase 9), expenses (Phase 10).
 """
 
 import uuid
@@ -24,6 +24,7 @@ PRODUCTS_URL = "/api/v1/products"
 CUSTOMERS_URL = "/api/v1/customers"
 SALES_URL = "/api/v1/sales"
 INVENTORY_URL = "/api/v1/inventory"
+EXPENSES_URL = "/api/v1/expenses"
 
 
 async def _create_staff_member(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
@@ -112,6 +113,17 @@ async def _create_stocked_product(api: AsyncClient, session: AsyncSession, tenan
     assert response.status_code == HTTPStatus.CREATED, response.text
     product_id: str = response.json()["id"]
     return product_id
+
+
+async def _create_expense(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
+    response = await api.post(
+        EXPENSES_URL,
+        headers=tenant.owner,
+        json={"amount": "250", "category": "RENT", "payment_method": "CASH"},
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    expense_id: str = response.json()["id"]
+    return expense_id
 
 
 CASES: list[IsolationCase] = [
@@ -205,6 +217,14 @@ CASES: list[IsolationCase] = [
                 {"product_id": None, "quantity_delta": "-1", "reason": "hijack"},
             ),
         ),
+    ),
+    IsolationCase(
+        name="expenses",
+        create_in=_create_expense,
+        read_url=lambda expense_id: f"{EXPENSES_URL}/{expense_id}",
+        list_url=f"{EXPENSES_URL}?include_deleted=true",
+        mutations=(("PATCH", lambda expense_id: f"{EXPENSES_URL}/{expense_id}", {"amount": "1"}),),
+        delete_url=lambda expense_id: f"{EXPENSES_URL}/{expense_id}",
     ),
 ]
 

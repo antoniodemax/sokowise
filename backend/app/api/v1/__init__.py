@@ -8,6 +8,7 @@ from app.api.v1.business import router as business_router
 from app.api.v1.categories import router as categories_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.debtors import router as debtors_router
+from app.api.v1.expenses import router as expenses_router
 from app.api.v1.inventory import router as inventory_router
 from app.api.v1.products import router as products_router
 from app.api.v1.sales import router as sales_router
@@ -24,3 +25,4 @@ router.include_router(debtors_router)
 router.include_router(sales_router)
 router.include_router(inventory_router)
 router.include_router(analytics_router)
+router.include_router(expenses_router)

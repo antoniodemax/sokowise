@@ -472,10 +472,18 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - Analytics read `sales` by `(business_id, sold_at)` (index `ix_sales_business_id_sold_at`), `sale_items` by `sale_id`, `payments` by `sale_id`, `credit_transactions` by `(business_id, customer_id, occurred_at)`; no pre-aggregation (FR-I7). Period bounds are UTC instants computed from local calendar days in `businesses.timezone`.
 - `audit_logs.action` values added: `inventory.restock`, `inventory.adjust`, `inventory.initial`, `inventory.recompute` (`entity_type` `product`).
 
+### 9.8 Expenses notes (no schema change)
+
+- `expenses.category` is stored normalised (trimmed, single-spaced, upper case); grouping and the `category` filter compare the normalised value.
+- Soft delete sets `deleted_at`; every listing, export and aggregate filters `deleted_at IS NULL` unless `include_deleted` is asked for. Rows are never hard-deleted.
+- `audit_logs.action` values added: `expense.update` (changed fields before/after, Decimal as strings, datetimes ISO), `expense.delete` (`entity_type` `expense`).
+- Expense queries use `ix_expenses_business_id_incurred_at`; exports page by `(incurred_at, id)`.
+- Open question 3 (§10) is resolved: no `supplier_name`/vendor column on expenses for MVP — the free-text `note` and `reference` cover it.
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.
 2. AI message retention period (proposal: 12 months, configurable).
-3. Whether `expenses` needs a `supplier_name`/vendor field (probably yes, cheap; decide in Phase 8).
+3. ~~Whether `expenses` needs a `supplier_name`/vendor field~~ — resolved in §9.8: not for MVP.
 
 Resolved since v0.1: STAFF can view customer balances and ledgers (PRD §16) because they record repayments; `sales.cost_total` removed; discount allocated per line; AI quota moved out of owner-editable settings.

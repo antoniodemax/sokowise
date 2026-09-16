@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** inventory operations (restock, adjust, history, low stock, cache recompute) and analytics (summary, time series, products, categories, slow products) implemented; expenses and the AI copilot next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** the business backend is complete for MVP — auth, tenants, catalogue, inventory, customers, credit, sales, expenses, analytics and CSV export of expenses; the frontend and the AI copilot are next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 

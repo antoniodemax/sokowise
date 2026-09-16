@@ -20,6 +20,8 @@ from app.db.session import get_session
 from app.schemas.analytics import (
     BucketOut,
     CategoryPerformanceOut,
+    ExpenseBreakdownOut,
+    ExpenseGroupOut,
     PeriodOut,
     ProductPerformanceOut,
     SlowProductOut,
@@ -129,3 +131,22 @@ async def categories(
     resolved = _period(ctx, period, date_from, date_to)
     rows = await queries.category_performance(session, ctx.business_id, resolved)
     return [CategoryPerformanceOut(**asdict(row)) for row in rows]
+
+
+@router.get("/expenses", response_model=ExpenseBreakdownOut)
+async def expenses(
+    ctx: OwnerCtx,
+    session: SessionDep,
+    period: PeriodQuery = NamedPeriod.THIS_MONTH,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> ExpenseBreakdownOut:
+    resolved = _period(ctx, period, date_from, date_to)
+    breakdown = await queries.expense_breakdown(session, ctx.business_id, resolved)
+    return ExpenseBreakdownOut(
+        period=_period_out(resolved),
+        total=breakdown.total,
+        count=breakdown.count,
+        by_category=[ExpenseGroupOut(**asdict(g)) for g in breakdown.by_category],
+        by_method=breakdown.by_method,
+    )

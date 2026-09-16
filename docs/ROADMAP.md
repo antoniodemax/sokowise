@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.9 — inventory operations and analytics implemented |
+| Status | Draft v0.10 — expenses and financial overview implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -207,20 +207,20 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 8 — Expenses and analytics ◐ (analytics implemented 2026-09-16; expenses and CSV export pending)
+## Phase 8 — Expenses and analytics ◐ (analytics and expenses implemented 2026-09-16; sales/customer CSV export pending)
 **Objective:** expenses and the read-only analytics used by dashboard and AI.
 
 **Tasks**
-- Expenses CRUD (soft delete, audit).
-- ☑ `analytics/` query functions and endpoints: period summary with the exact FR-I1 fields (`revenue` accrual, `cash_collected` by method including credit repayments, `tender_split`, `cogs`, `lines_missing_cost`, `products_missing_cost`, gross/net profit — `expenses` reads the table and is 0 until expenses ship), top products (qty / revenue / profit using `discount_allocated`), slow products, categories, time series (day/week/month), `receivables_outstanding`; low stock lives under `/inventory`, debtors under `/debtors`. Period boundaries computed in business timezone (ARCHITECTURE §5.11). ☐ expenses by category (with expenses).
-- CSV export endpoints (sales, customers, expenses).
+- ☑ Expenses CRUD (soft delete, audit) — ARCHITECTURE §5.12.
+- ☑ `analytics/` query functions and endpoints: period summary with the exact FR-I1 fields (`revenue` accrual, `cash_collected` by method including credit repayments, `tender_split`, `cogs`, `lines_missing_cost`, `products_missing_cost`, gross/net profit — `expenses` reads the table and is 0 until expenses ship), top products (qty / revenue / profit using `discount_allocated`), slow products, categories, time series (day/week/month), `receivables_outstanding`; low stock lives under `/inventory`, debtors under `/debtors`. Period boundaries computed in business timezone (ARCHITECTURE §5.11). ☑ expenses by category and by method (`GET /analytics/expenses`); `expenses`/`net_profit` in the summary and time series.
+- ◐ CSV export endpoints: ☑ expenses (`GET /expenses/export.csv`, streamed); ☐ sales, customers.
 
 **Dependencies:** Phase 7.
 
 **Completion criteria**
 - Fixture-based tests with hand-computed expected values for every analytics function, including: a day-boundary case around midnight Nairobi time; a voided-sale exclusion case; a credit sale that raises revenue but not cash collected, followed by a repayment that raises cash collected but not revenue; a product with unknown cost reported in `lines_missing_cost`; Σ product profit = period gross profit on a discounted sale. — **Met** (`tests/db/test_analytics_api.py`, `test_sales_accounting.py`; 565 tests pass locally).
 - Query plans checked on the transactional indexes (no seq scans on `sales` for a period query). — deferred to a dataset large enough for the planner to prefer the index (tiny test tables always seq-scan).
-- Pending before ☑: expenses CRUD, expenses by category, CSV export.
+- Pending before ☑: sales and customer CSV exports; query-plan check on a realistic dataset. (`tests/db/test_expenses_api.py`, `test_expenses_analytics.py`, `test_expenses_concurrency.py`; 608 tests pass locally.)
 
 ---
 
