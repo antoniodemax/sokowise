@@ -34,6 +34,18 @@ Authentication (`/api/v1/auth`, docs/ARCHITECTURE.md §5):
 | `POST /change-password` | bearer | set a new password; clears `must_change_password`; replaces all sessions |
 | `GET /me` | bearer | the caller's user, business and role |
 
+Business and members (OWNER-only, `Authorization: Bearer …`; docs/ARCHITECTURE.md §5.3):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/business` | profile + settings |
+| `PATCH /api/v1/business` | update name, type, phone, address, timezone, settings (audited) |
+| `GET /api/v1/users` | members of the business |
+| `POST /api/v1/users` | create a STAFF user (must change password at first login) |
+| `GET /api/v1/users/{user_id}` | one member |
+| `PATCH /api/v1/users/{user_id}` | change `role` / `is_active`; the last active owner is protected (409 `LAST_OWNER`) |
+| `POST /api/v1/users/{user_id}/reset-password` | set a STAFF member's temporary password (204) |
+
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
 `sokowise_refresh` HttpOnly cookie; the refresh token is never in the body. `JWT_SECRET` (≥ 32
 characters) is required; with `COOKIE_SECURE=false` the cookie works over plain http locally.
@@ -79,13 +91,14 @@ app/
 │                      `transaction()` helper used by services
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
 ├── schemas/           Pydantic request/response models (auth), identifier normalisation
-├── repositories/      queries (users/memberships, businesses, refresh tokens)
-├── services/          transactions and rules (auth: register, login, refresh, logout, password)
+├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs)
+├── services/          transactions and rules (auth, business, members, audit)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
-                       v1/ (routers mounted at /api/v1: auth)
+                       v1/ (routers mounted at /api/v1: auth, business, users)
 alembic/               migrations (async env); alembic.ini holds no URL
-tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api` fixture)
+tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api`/`tenants` fixtures;
+                       register tenant-scoped endpoints in tests/db/test_tenant_isolation.py)
 ```
 
 Settings are read from environment variables (see `../.env.example`). The app refuses to start

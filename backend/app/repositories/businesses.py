@@ -14,3 +14,12 @@ from app.models import Business
 
 async def get_business(session: AsyncSession, business_id: uuid.UUID) -> Business | None:
     return await session.get(Business, business_id)
+
+
+async def get_business_for_update(session: AsyncSession, business_id: uuid.UUID) -> Business | None:
+    """`SELECT … FOR UPDATE`: serialises business-level changes (settings, memberships).
+
+    Membership changes lock the business row so two concurrent demotions cannot both
+    see "another owner exists" and leave the business ownerless (ARCHITECTURE §3.4).
+    """
+    return await session.get(Business, business_id, with_for_update=True)

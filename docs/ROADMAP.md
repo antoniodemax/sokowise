@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.3 — Phase 3 implemented |
+| Status | Draft v0.4 — Phase 4 implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -99,20 +99,29 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 4 — Business and user management ☐
+## Phase 4 — Business and user management ◐ (implemented 2026-09-16; verified against local PostgreSQL 16.15; CI run pending)
 **Objective:** manage business settings and staff.
 
 **Tasks**
-- `GET/PATCH /business` (settings validated by Pydantic model).
-- `GET/POST/PATCH /users` for OWNER: create STAFF (phone, name, initial password), deactivate, reset password.
-- Last-owner protection.
-- Audit entries for settings and user changes.
-- **Generic tenant-isolation test helper**: a parametrised pytest fixture that, given an endpoint and a factory for its resource, creates the resource in Business B and asserts that Business A gets 404 on read, update, delete and list-exclusion. Every tenant-scoped endpoint added in this and later phases must be registered with it; a PR adding an endpoint without registering it is incomplete.
+- `GET/PATCH /api/v1/business` (OWNER-only; settings validated by `schemas/business.BusinessSettings`: `staff_can_restock`, `sale_backdate_days`, `low_stock_default_threshold`; unknown keys are a 422 so AI quotas can never be set here).
+- `GET/POST /api/v1/users`, `GET/PATCH /api/v1/users/{user_id}`, `POST /api/v1/users/{user_id}/reset-password` for OWNER: create STAFF (phone, name, initial password, `must_change_password=true`), change role, deactivate/reactivate the membership, reset a STAFF password (ARCHITECTURE §5.3).
+- Last-owner protection: 409 `LAST_OWNER`; business row locked for membership changes; race tested.
+- Audit entries for settings and user changes through `services/audit.record` (ARCHITECTURE §5.5); atomic with the change.
+- **Generic tenant-isolation test helper**: `backend/tests/db/isolation.py` + `test_tenant_isolation.py`; registered cases: `users`. Every tenant-scoped endpoint added in later phases must add an `IsolationCase`; a PR adding an endpoint without registering it is incomplete.
+- `BusinessContext` gained `membership_id`; a token selector for a business the user is not a member of is now 404 (was 401 in Phase 3) so cross-tenant answers are uniform (ARCHITECTURE §5.3).
+
+**Notes recorded while implementing**
+- Deactivation is per membership (`business_memberships.is_active`), as DATA_MAPPING §3.3 defines; `users.is_active` (global) is not touched by an owner. Because MVP has one business per user, deactivation also revokes all of the user's refresh tokens; if multi-business ever arrives, revocation must become per business.
+- Password reset is limited to STAFF targets (PRD FR-B6 "owner-initiated staff password reset"); owners are peers and use `/auth/change-password`.
+- `PATCH /users/{id}` carries `role` and `is_active` only; a user's own name/phone changes are not in the PRD and were not added.
+- Audit rows have no `request_id` column (DATA_MAPPING §3.16); correlation is through the `audit` log line. Adding a column is a one-migration change if the pilot needs it.
+- No migration: Phase 2 already had every table and column this phase uses.
 
 **Dependencies:** Phase 3.
 
 **Completion criteria**
-- Role matrix tests for every endpoint; every tenant-scoped endpoint registered with the isolation helper and passing; audit rows written.
+- Role matrix tests for every endpoint; every tenant-scoped endpoint registered with the isolation helper and passing; audit rows written. — **Met** (`tests/db/test_business_api.py`, `test_users_api.py`, `test_tenant_isolation.py`, `test_members_concurrency.py`; 305 tests pass locally).
+- Pending before marking ☑: CI green on GitHub.
 
 ---
 

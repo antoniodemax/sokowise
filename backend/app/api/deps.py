@@ -7,6 +7,7 @@ The chain for a business endpoint is
     get_current_user   → load the user; must exist and be active
     get_business_context
                        → load the membership for (user, token.bid) and its business;
+                         no membership → 404 (never confirm another tenant exists);
                          both must be active; role comes from the membership row;
                          reject if the user must change their password
     require_role(...)  → compare the membership role with the route's requirement
@@ -26,7 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.context import BusinessContext, ClientInfo
-from app.core.errors import PermissionDeniedError, RateLimitedError, UnauthorizedError
+from app.core.errors import (
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitedError,
+    UnauthorizedError,
+)
 from app.core.ratelimit import RateLimiter
 from app.core.tokens import AccessTokenClaims, InvalidTokenError, decode_access_token
 from app.db.session import get_session
@@ -130,14 +136,17 @@ async def get_business_context(
         session, user_id=user.id, business_id=claims.business_id
     )
     if membership is None:
-        # The token names a business this user has never belonged to: not a valid session.
-        raise UnauthorizedError("Invalid or expired token")
+        # The token names a business this user has no membership in. Cross-tenant access is
+        # a 404 (ARCHITECTURE §8): the response must not confirm that the business exists.
+        raise NotFoundError("Business not found")
     if not membership.is_active:
         raise PermissionDeniedError(
             "Your access to this business is inactive", code="MEMBERSHIP_INACTIVE"
         )
     business = await business_repo.get_business(session, membership.business_id)
-    if business is None or not business.is_active:
+    if business is None:
+        raise NotFoundError("Business not found")
+    if not business.is_active:
         raise PermissionDeniedError("This business is inactive", code="BUSINESS_INACTIVE")
     if user.must_change_password:
         raise PermissionDeniedError(
@@ -146,6 +155,7 @@ async def get_business_context(
     return BusinessContext(
         user_id=user.id,
         business_id=business.id,
+        membership_id=membership.id,
         role=membership.role,
         timezone=business.timezone,
         settings=dict(business.settings),

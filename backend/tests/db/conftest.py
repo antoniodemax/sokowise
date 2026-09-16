@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.pool import NullPool
 
 from tests.conftest import TEST_DATABASE_URL
+from tests.db.isolation import Tenant
 
 # A host with a dot: http.cookiejar treats a dotless host as "<host>.local", which
 # makes cookies set explicitly by tests (attacker replays) fail to match.
@@ -105,3 +106,14 @@ async def api_factory(db_session: AsyncSession) -> AsyncIterator[ApiFactory]:
 @pytest.fixture
 async def api(api_factory: ApiFactory) -> AsyncClient:
     return await api_factory()
+
+
+@pytest.fixture
+async def tenants(api: AsyncClient, db_session: AsyncSession) -> tuple[Tenant, Tenant]:
+    """Two unrelated businesses (A, B), each with an owner and a staff member logged in."""
+    from tests.db.auth_helpers import make_tenant
+
+    return (
+        await make_tenant(api, db_session, "Alpha Duka"),
+        await make_tenant(api, db_session, "Beta Duka"),
+    )

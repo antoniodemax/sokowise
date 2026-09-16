@@ -20,6 +20,7 @@ class BusinessContext:
 
     user_id: uuid.UUID
     business_id: uuid.UUID
+    membership_id: uuid.UUID
     role: MembershipRole
     timezone: str
     settings: dict[str, object]

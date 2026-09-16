@@ -11,6 +11,8 @@ from app.models.enums import MembershipRole
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.db.isolation import Tenant
+
 REGISTER_URL = "/api/v1/auth/register"
 LOGIN_URL = "/api/v1/auth/login"
 REFRESH_URL = "/api/v1/auth/refresh"
@@ -109,4 +111,23 @@ def client_from_ip(api: AsyncClient, ip: str) -> AsyncClient:
     return AsyncClient(
         transport=ASGITransport(app=transport.app, client=(ip, 40000)),
         base_url=str(api.base_url),
+    )
+
+
+async def make_tenant(api: AsyncClient, session: AsyncSession, business_name: str) -> Tenant:
+    """A business with a logged-in OWNER and STAFF, for role-matrix and isolation tests."""
+    owner = await register(api, business_name=business_name)
+    assert owner.status_code == 201, owner.text
+    body = owner.json()
+    staff_phone = unique_phone()
+    staff = await add_staff(session, uuid.UUID(body["business"]["id"]), phone=staff_phone)
+    staff_login = await login(api, staff_phone)
+    assert staff_login.status_code == 200, staff_login.text
+    api.cookies.clear()
+    return Tenant(
+        business_id=body["business"]["id"],
+        owner_user_id=body["user"]["id"],
+        owner=bearer(body["access_token"]),
+        staff=bearer(staff_login.json()["access_token"]),
+        staff_user_id=str(staff.id),
     )

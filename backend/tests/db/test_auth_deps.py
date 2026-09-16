@@ -289,10 +289,18 @@ async def test_token_cannot_be_pointed_at_another_business(
     # A token that names Bob's business for Alice's user id (signed with the real key,
     # i.e. worse than anything a client could produce).
     forged = _mint(_settings(api), uuid.UUID(alice["user"]["id"]), uuid.UUID(bob["business"]["id"]))
+    # Cross-tenant: 404, never 403, so the response does not confirm Bob's business exists
+    # (ARCHITECTURE §8; changed from 401 in Phase 4).
     for url in (ME_URL, OWNER_ONLY_URL, ANY_MEMBER_URL):
         response = await api.get(url, headers=bearer(forged))
-        assert response.status_code == HTTPStatus.UNAUTHORIZED, url
+        assert response.status_code == HTTPStatus.NOT_FOUND, url
+        assert error_code(response) == "NOT_FOUND"
         assert "Bob" not in response.text
+    # A selector for a business that does not exist at all looks exactly the same.
+    ghost = _mint(_settings(api), uuid.UUID(alice["user"]["id"]), uuid.uuid4())
+    response = await api.get(ME_URL, headers=bearer(ghost))
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert error_code(response) == "NOT_FOUND"
     # A genuine token still resolves to Alice's own business only.
     me = await api.get(ME_URL, headers=bearer(alice["access_token"]))
     assert me.json()["business"]["id"] == alice["business"]["id"]

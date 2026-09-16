@@ -428,6 +428,12 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - `refresh_tokens.token_hash` is the SHA-256 hex digest (64 characters) of a 256-bit random token; `family_id` equals the first token's `id`; `parent_id` links each rotation to the token it replaced; `user_agent` (truncated to 255) and `ip` (45) are recorded from the request. Rotation is a single `UPDATE … RETURNING` so concurrent refreshes cannot both succeed (ARCHITECTURE §5.1).
 - Registration inserts `users`, `businesses` and the OWNER `business_memberships` row in one transaction; uniqueness of phone/email is left to `uq_users_phone` / `uq_users_email`, and a violation rolls the whole registration back.
 
+### 9.2 Phase 4 notes (no schema change)
+
+- `businesses.settings` is written only as the full validated `BusinessSettings` object (defaults materialised), so a stored value is either `{}` (never edited) or has all three keys.
+- `business_memberships.is_active=false` is the "deactivated staff" state; `users.is_active` stays true. The last active OWNER of a business cannot be demoted or deactivated; the service locks the `businesses` row (`FOR UPDATE`) while checking.
+- `audit_logs.action` values in use: `business.update`, `user.create`, `user.role_change`, `user.deactivate`, `user.reactivate`, `user.password_reset` (`<entity>.<verb>`); `entity_type` is `business` or `user`; `before`/`after` contain changed fields only and never secrets or phone numbers.
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.
