@@ -464,6 +464,14 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - Lock order inside a sale: products by id ascending, then the customer. Void: the sale row, then products by id, then the customer.
 - `audit_logs.action` values added: `sale.void`, `sale.credit_limit_override` (`entity_type` `sale`).
 
+### 9.7 Inventory operations and analytics notes (no schema change)
+
+- RESTOCK / ADJUSTMENT / INITIAL rows are written by `services.inventory` through `apply_movement`; `quantity_delta` and `unit_cost` are quantised (0.001 / 0.01) before insert; `total_cost` = |quantity_delta| × unit_cost. ADJUSTMENT rows carry no cost.
+- `products.stock_quantity` can be re-derived: Σ `inventory_movements.quantity_delta` per product; `POST /inventory/recompute` and `scripts/recompute_caches.py` compare and repair it under the row lock without writing movements.
+- Low stock: `stock_quantity <= coalesce(products.low_stock_threshold, businesses.settings.low_stock_default_threshold)` for active tracked products.
+- Analytics read `sales` by `(business_id, sold_at)` (index `ix_sales_business_id_sold_at`), `sale_items` by `sale_id`, `payments` by `sale_id`, `credit_transactions` by `(business_id, customer_id, occurred_at)`; no pre-aggregation (FR-I7). Period bounds are UTC instants computed from local calendar days in `businesses.timezone`.
+- `audit_logs.action` values added: `inventory.restock`, `inventory.adjust`, `inventory.initial`, `inventory.recompute` (`entity_type` `product`).
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.

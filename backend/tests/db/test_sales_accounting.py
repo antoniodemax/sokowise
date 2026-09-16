@@ -164,3 +164,80 @@ async def test_accounting_trace(
     ]
     audits = (await db_session.scalars(select(AuditLog).where(AuditLog.business_id == bid))).all()
     assert [r.action for r in audits] == ["credit.repayment"]  # sales themselves are not audited
+
+
+async def test_accounting_trace_through_the_analytics_api_including_void(
+    api: AsyncClient, db_session: AsyncSession, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Same model as above, read back through /analytics (no test-side arithmetic), then voided."""
+    a, _ = tenants
+    product = await make_product(api, a.owner, price="500", cost="300", stock="10")
+    customer = await make_customer(api, a.owner, credit_limit="5000")
+
+    async def analytics() -> dict[str, object]:
+        response = await api.get(
+            "/api/v1/analytics/summary", headers=a.owner, params={"period": "today"}
+        )
+        assert response.status_code == HTTPStatus.OK, response.text
+        body: dict[str, object] = response.json()
+        return body
+
+    await sell(api, a.owner, sale_payload([(product["id"], "2")], [("CASH", "1000")]))
+    credit_sale = await sell(
+        api,
+        a.owner,
+        sale_payload([(product["id"], "3")], [("CREDIT", "1500")], customer_id=customer["id"]),
+    )
+    s = await analytics()
+    assert (s["revenue"], s["cash_collected_total"], s["receivables_outstanding"]) == (
+        "2500.00",
+        "1000.00",
+        "1500.00",
+    )
+    assert (s["cogs"], s["gross_profit"], s["sales_count"]) == ("1500.00", "1000.00", 2)
+    assert s["tender_split"] == {"CASH": "1000.00", "MPESA": "0.00", "CREDIT": "1500.00"}
+    assert await stock_of(db_session, product["id"]) == D("5.000")
+
+    assert (
+        await api.post(
+            f"/api/v1/customers/{customer['id']}/repayments",
+            headers=a.owner,
+            json={"amount": "500", "payment_method": "CASH"},
+        )
+    ).status_code == 201
+    s = await analytics()
+    assert (s["revenue"], s["cash_collected_total"], s["receivables_outstanding"]) == (
+        "2500.00",
+        "1500.00",
+        "1000.00",
+    )
+    assert s["cash_collected"] == {"CASH": "1500.00", "MPESA": "0.00"}
+    assert (s["cogs"], s["gross_profit"]) == ("1500.00", "1000.00")
+
+    # Void the credit sale: revenue, COGS and the tender leave analytics; stock and the
+    # charge are reversed; the repayment stays as cash collected and as credit in favour.
+    assert (
+        await api.post(
+            f"/api/v1/sales/{credit_sale['id']}/void", headers=a.owner, json={"reason": "returned"}
+        )
+    ).status_code == 200
+    s = await analytics()
+    assert (s["revenue"], s["sales_count"], s["cogs"], s["gross_profit"]) == (
+        "1000.00",
+        1,
+        "600.00",
+        "400.00",
+    )
+    assert s["tender_split"] == {"CASH": "1000.00", "MPESA": "0.00", "CREDIT": "0.00"}
+    assert s["cash_collected"] == {"CASH": "1500.00", "MPESA": "0.00"}  # 1000 sale + 500 repayment
+    assert (
+        s["receivables_outstanding"] == "0.00"
+    )  # balance is -500 (credit in favour), not a receivable
+    assert await stock_of(db_session, product["id"]) == D("8.000")
+    assert await db_balance(db_session, customer["id"]) == (D("-500.00"), D("-500.00"))
+    products = (
+        await api.get("/api/v1/analytics/products", headers=a.owner, params={"period": "today"})
+    ).json()
+    assert [(r["quantity"], r["revenue"], r["cogs"], r["gross_profit"]) for r in products] == [
+        ("2.000", "1000.00", "600.00", "400.00")
+    ]

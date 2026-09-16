@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.8 — sales and payments implemented |
+| Status | Draft v0.9 — inventory operations and analytics implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -125,16 +125,16 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 5 — Products and inventory ◐ (categories + products implemented 2026-09-16; inventory endpoints pending)
+## Phase 5 — Products and inventory ◐ (categories, products and inventory operations implemented 2026-09-16; CI run pending)
 **Objective:** catalogue and stock ledger.
 
 **Tasks**
 - ☑ Categories CRUD; products CRUD with archive; search (`GET /products?q=` prefix on name/SKU/barcode). Product creation accepts `opening_stock` + `opening_unit_cost` and writes the `INITIAL` movement atomically (PRD FR-D6); `stock_quantity` is never writable directly. Rules in ARCHITECTURE §5.6.
 - ☑ `services/inventory.apply_movement`: the one primitive that appends a movement and maintains `products.stock_quantity` under the product row lock (BR-11). The endpoints below build on it.
-- ☐ Inventory movements: `POST /inventory/restock`, `POST /inventory/adjust`, `POST /inventory/initial`, `GET /inventory/movements?product_id=`.
-- ☐ Low-stock list endpoint.
-- ☐ `scripts/recompute_caches.py` to rebuild `stock_quantity` from the ledger.
-- ☑ Audit: price change (`product.price_change`) plus `product.archive` / `product.unarchive`. ☐ restock, adjustment.
+- ☑ Inventory movements: `POST /inventory/restock`, `POST /inventory/adjust`, `POST /inventory/initial`, `GET /inventory/movements?product_id=` — ARCHITECTURE §5.10.
+- ☑ Low-stock list endpoint (`GET /inventory/low-stock`).
+- ☑ `scripts/recompute_caches.py` and `POST /inventory/recompute` to compare/rebuild `stock_quantity` from the ledger.
+- ☑ Audit: price change (`product.price_change`), `product.archive` / `product.unarchive`, `inventory.restock`, `inventory.adjust`, `inventory.initial`, `inventory.recompute`.
 
 **Notes recorded while implementing the catalogue half**
 - Categories have no archive state (DATA_MAPPING §3.5, PRD FR-D4 "simple labels"); delete is allowed only while no product references the category (409 `CATEGORY_IN_USE`). No default categories are seeded.
@@ -146,9 +146,9 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 **Dependencies:** Phase 4.
 
 **Completion criteria**
-- Concurrency test: two simultaneous restocks/adjustments produce the correct final quantity. — pending (inventory endpoints).
-- Recompute script yields identical values to cached column on fixture data. — pending.
-- Tests: untracked products create no movements and are not stock-validated (☑ for creation); `quantity_after` follows commit order for backdated movements (pending).
+- Concurrency test: two simultaneous restocks/adjustments produce the correct final quantity. — **Met** (`tests/db/test_inventory_concurrency.py`).
+- Recompute script yields identical values to cached column on fixture data. — **Met** (`test_inventory_api.py::test_recompute_reports_and_repairs_cache_drift`; script exercised against the test database).
+- Tests: untracked products create no movements and are not stock-validated ☑; `quantity_after` follows commit order for backdated movements ☑.
 - Role and isolation tests (registered with the Phase 4 helper). — ☑ for categories and products (`tests/db/test_categories_api.py`, `test_products_api.py`, `test_catalog_concurrency.py`, `test_tenant_isolation.py`; 368 tests pass locally).
 
 ---
@@ -207,19 +207,20 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 8 — Expenses and analytics ☐
+## Phase 8 — Expenses and analytics ◐ (analytics implemented 2026-09-16; expenses and CSV export pending)
 **Objective:** expenses and the read-only analytics used by dashboard and AI.
 
 **Tasks**
 - Expenses CRUD (soft delete, audit).
-- `analytics/` query functions and endpoints: period summary with the exact FR-I1 fields (`revenue` accrual, `cash_collected` by method including credit repayments, `tender_split`, `cogs`, `lines_missing_cost`, `products_missing_cost`, gross/net profit), top products (qty / revenue / profit using `discount_allocated`), slow products, low stock, debtors summary, expenses by category. Period boundaries computed in business timezone.
+- ☑ `analytics/` query functions and endpoints: period summary with the exact FR-I1 fields (`revenue` accrual, `cash_collected` by method including credit repayments, `tender_split`, `cogs`, `lines_missing_cost`, `products_missing_cost`, gross/net profit — `expenses` reads the table and is 0 until expenses ship), top products (qty / revenue / profit using `discount_allocated`), slow products, categories, time series (day/week/month), `receivables_outstanding`; low stock lives under `/inventory`, debtors under `/debtors`. Period boundaries computed in business timezone (ARCHITECTURE §5.11). ☐ expenses by category (with expenses).
 - CSV export endpoints (sales, customers, expenses).
 
 **Dependencies:** Phase 7.
 
 **Completion criteria**
-- Fixture-based tests with hand-computed expected values for every analytics function, including: a day-boundary case around midnight Nairobi time; a voided-sale exclusion case; a credit sale that raises revenue but not cash collected, followed by a repayment that raises cash collected but not revenue; a product with unknown cost reported in `lines_missing_cost`; Σ product profit = period gross profit on a discounted sale.
-- Query plans checked on the transactional indexes (no seq scans on `sales` for a period query).
+- Fixture-based tests with hand-computed expected values for every analytics function, including: a day-boundary case around midnight Nairobi time; a voided-sale exclusion case; a credit sale that raises revenue but not cash collected, followed by a repayment that raises cash collected but not revenue; a product with unknown cost reported in `lines_missing_cost`; Σ product profit = period gross profit on a discounted sale. — **Met** (`tests/db/test_analytics_api.py`, `test_sales_accounting.py`; 565 tests pass locally).
+- Query plans checked on the transactional indexes (no seq scans on `sales` for a period query). — deferred to a dataset large enough for the planner to prefer the index (tiny test tables always seq-scan).
+- Pending before ☑: expenses CRUD, expenses by category, CSV export.
 
 ---
 

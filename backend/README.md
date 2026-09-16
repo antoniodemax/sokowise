@@ -84,6 +84,30 @@ Sales (docs/ARCHITECTURE.md §5.9):
 | `GET /api/v1/sales/{id}` | one sale with item snapshots and tenders |
 | `POST /api/v1/sales/{id}/void` | reason required; reverses stock and credit, audited — OWNER |
 
+Inventory (docs/ARCHITECTURE.md §5.10):
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/inventory/restock` | stock in with unit cost, optional supplier/reason, optional `update_cost_price` — OWNER, or STAFF if `staff_can_restock` |
+| `POST /api/v1/inventory/adjust` | signed correction with a reason; never below zero — OWNER |
+| `POST /api/v1/inventory/initial` | opening stock for a product with no movements — OWNER |
+| `GET /api/v1/inventory/movements?product_id=&movement_type=&date_from=&date_to=&limit=` | history, newest first by posting order — members |
+| `GET /api/v1/inventory/low-stock` | active tracked products at/below their threshold — members |
+| `POST /api/v1/inventory/recompute` (`{"apply": false}`) | compare the stock cache with the ledger; `apply: true` repairs it — OWNER |
+
+Analytics (OWNER-only; docs/ARCHITECTURE.md §5.11). Periods: `period=today|yesterday|this_week|this_month`
+or `period=custom&date_from=&date_to=` (local calendar days in the business timezone):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/analytics/summary` | sales count, revenue, discounts, COGS, missing-cost counts, gross/net profit, tender split, cash collected by method, receivables |
+| `GET /api/v1/analytics/timeseries?granularity=day\|week\|month` | the same per bucket |
+| `GET /api/v1/analytics/products?sort=quantity\|revenue\|profit&limit=` | product performance (archived products included) |
+| `GET /api/v1/analytics/slow-products?days=30` | tracked products in stock with no sale in `days` |
+| `GET /api/v1/analytics/categories` | revenue / COGS / profit by category (null = uncategorised) |
+
+`uv run --env-file ../.env python scripts/recompute_caches.py [--apply]` checks (or repairs) every business's stock cache.
+
 Money and quantities are decimal strings in JSON (`"150.00"`, `"12.500"`).
 
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
@@ -134,12 +158,14 @@ app/
 ├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs,
 │                      categories, products, inventory movements, customers, credit, sales)
 ├── services/          transactions and rules (auth, business, members, audit, categories,
-│                      products, inventory primitive, customers, credit ledger, sales, money)
+│                      products, inventory operations, customers, credit ledger, sales, money)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
                        v1/ (routers mounted at /api/v1: auth, business, users, categories,
-                       products, customers, debtors, sales)
+                       products, customers, debtors, sales, inventory, analytics)
+├── analytics/         read-only SQL aggregates and period helpers (business timezone)
 alembic/               migrations (async env; two revisions); alembic.ini holds no URL
+scripts/               management commands (recompute_caches.py)
 tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api`/`tenants` fixtures;
                        register tenant-scoped endpoints in tests/db/test_tenant_isolation.py)
 ```

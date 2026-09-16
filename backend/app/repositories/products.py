@@ -66,3 +66,15 @@ async def get_product_for_update(
 
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def list_tracked_product_ids(
+    session: AsyncSession, business_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """Every tracked product of the business (archived included: their cache must be right too)."""
+    result = await session.scalars(
+        select(Product.id)
+        .where(Product.business_id == business_id, Product.track_inventory.is_(True))
+        .order_by(Product.id)
+    )
+    return list(result)

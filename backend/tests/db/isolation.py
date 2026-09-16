@@ -64,7 +64,14 @@ async def assert_tenant_isolated(
     assert resource_id not in other.text
 
     for method, url_for, body in case.mutations:
-        response = await api.request(method, url_for(resource_id), headers=a.owner, json=body)
+        # A body value of None for a key ending in "_id" is filled with the resource id, for
+        # endpoints that take the resource in the body rather than the path.
+        payload = (
+            {k: (resource_id if v is None and k.endswith("_id") else v) for k, v in body.items()}
+            if body is not None
+            else None
+        )
+        response = await api.request(method, url_for(resource_id), headers=a.owner, json=payload)
         assert response.status_code == HTTPStatus.NOT_FOUND, (case.name, method, response.text)
     if case.delete_url is not None:
         response = await api.delete(case.delete_url(resource_id), headers=a.owner)

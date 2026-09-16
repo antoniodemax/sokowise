@@ -8,8 +8,8 @@ Action naming: `<entity>.<verb>`, lower snake case, stable (they are queried, no
 displayed). Phase 4 actions: `business.update`, `user.create`, `user.role_change`,
 `user.deactivate`, `user.reactivate`, `user.password_reset`; Phase 5: `product.price_change`,
 `product.archive`, `product.unarchive`; Phase 7: `credit.repayment`, `credit.adjust`;
-Phase 8: `sale.void`, `sale.credit_limit_override` (PRD FR-K1). Later phases add their
-own following DATA_MAPPING §3.16 (`inventory.adjust`, …).
+Phase 8: `sale.void`, `sale.credit_limit_override`; inventory: `inventory.restock`,
+`inventory.adjust`, `inventory.initial`, `inventory.recompute` (PRD FR-K1).
 
 `before`/`after` hold only the fields that changed, as JSON-safe values. Never
 pass secrets: password hashes, tokens, cookies or headers do not belong here,
@@ -43,6 +43,10 @@ class AuditAction(StrEnum):
     CREDIT_ADJUST = "credit.adjust"
     SALE_VOID = "sale.void"
     SALE_CREDIT_LIMIT_OVERRIDE = "sale.credit_limit_override"
+    INVENTORY_RESTOCK = "inventory.restock"
+    INVENTORY_ADJUST = "inventory.adjust"
+    INVENTORY_INITIAL = "inventory.initial"
+    INVENTORY_RECOMPUTE = "inventory.recompute"
 
 
 # Keys that must never appear in an audit payload, whatever a caller passes.

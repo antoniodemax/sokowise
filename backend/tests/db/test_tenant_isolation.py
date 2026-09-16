@@ -2,7 +2,8 @@
 
 To register a new resource type, add an `IsolationCase` to `CASES`. Registered:
 business members (Phase 4), categories and products (Phase 5), customers (Phase 6),
-customer accounts — ledger, repayments, adjustments (Phase 7), sales (Phase 8).
+customer accounts — ledger, repayments, adjustments (Phase 7), sales (Phase 8), inventory
+movements (Phase 9).
 """
 
 import uuid
@@ -22,6 +23,7 @@ CATEGORIES_URL = "/api/v1/categories"
 PRODUCTS_URL = "/api/v1/products"
 CUSTOMERS_URL = "/api/v1/customers"
 SALES_URL = "/api/v1/sales"
+INVENTORY_URL = "/api/v1/inventory"
 
 
 async def _create_staff_member(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
@@ -93,6 +95,23 @@ async def _create_sale(api: AsyncClient, session: AsyncSession, tenant: Tenant) 
     assert response.status_code == HTTPStatus.CREATED, response.text
     sale_id: str = response.json()["id"]
     return sale_id
+
+
+async def _create_stocked_product(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
+    """A product with opening stock: its movement history is the tenant-owned resource."""
+    response = await api.post(
+        PRODUCTS_URL,
+        headers=tenant.owner,
+        json={
+            "name": "Stocked",
+            "selling_price": "10",
+            "opening_stock": "5",
+            "opening_unit_cost": "1",
+        },
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    product_id: str = response.json()["id"]
+    return product_id
 
 
 CASES: list[IsolationCase] = [
@@ -168,6 +187,24 @@ CASES: list[IsolationCase] = [
         read_url=lambda sale_id: f"{SALES_URL}/{sale_id}",
         list_url=SALES_URL,
         mutations=(("POST", lambda sale_id: f"{SALES_URL}/{sale_id}/void", {"reason": "hijack"}),),
+    ),
+    IsolationCase(
+        name="inventory",
+        create_in=_create_stocked_product,
+        read_url=lambda product_id: f"{INVENTORY_URL}/movements?product_id={product_id}",
+        list_url=f"{INVENTORY_URL}/movements",
+        mutations=(
+            (
+                "POST",
+                lambda product_id: f"{INVENTORY_URL}/restock",
+                {"product_id": None, "quantity": "1", "unit_cost": "1"},
+            ),
+            (
+                "POST",
+                lambda product_id: f"{INVENTORY_URL}/adjust",
+                {"product_id": None, "quantity_delta": "-1", "reason": "hijack"},
+            ),
+        ),
     ),
 ]
 
