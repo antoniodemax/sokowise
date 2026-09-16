@@ -7,3 +7,4 @@ tests
 .env
 *.md
 !README.md
+alembic/__pycache__

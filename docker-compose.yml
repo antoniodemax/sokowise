@@ -3,6 +3,7 @@
 #
 #   docker compose up -d postgres      # database only; run the backend with uv on the host
 #   docker compose up --build          # database + backend in containers
+#   docker compose run --rm backend alembic upgrade head   # apply migrations
 
 name: sokowise
 
@@ -17,6 +18,8 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Creates ${POSTGRES_DB}_test for the backend test suite on first start.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sokowise} -d ${POSTGRES_DB:-sokowise}"]
       interval: 5s
@@ -31,7 +34,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       API_PORT: 8000
-      # Consumed from Phase 2 onward; set now so the container is wired to the database service.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sokowise}:${POSTGRES_PASSWORD:-sokowise}@postgres:5432/${POSTGRES_DB:-sokowise}
     ports:
       - "${API_PORT:-8000}:8000"

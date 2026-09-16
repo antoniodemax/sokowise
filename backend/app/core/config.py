@@ -7,7 +7,7 @@ application refuse to start; nothing here has a secret default.
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 AppEnv = Literal["development", "test", "production"]
@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     log_level: LogLevel = "INFO"
     # NoDecode: read the raw env string; the validator below splits it on commas.
     cors_origins: Annotated[list[str], NoDecode]
+    # postgresql+asyncpg://user:password@host:port/database (docs/ARCHITECTURE.md §10).
+    database_url: PostgresDsn
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -31,6 +33,14 @@ class Settings(BaseSettings):
         """Accept a comma-separated string (as set in .env) as well as a list."""
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("database_url")
+    @classmethod
+    def require_asyncpg_driver(cls, value: PostgresDsn) -> PostgresDsn:
+        if value.scheme != "postgresql+asyncpg":
+            msg = "DATABASE_URL must use the postgresql+asyncpg:// scheme"
+            raise ValueError(msg)
         return value
 
     @property

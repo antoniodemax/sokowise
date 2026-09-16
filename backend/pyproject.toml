@@ -9,6 +9,9 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
 ]
 
 [dependency-groups]
@@ -29,7 +32,7 @@ packages = ["app"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["app", "tests"]
+src = ["app", "tests", "alembic"]
 
 [tool.ruff.lint]
 # E/W pycodestyle, F pyflakes, I isort, UP pyupgrade, B bugbear, S bandit (security),
@@ -37,17 +40,24 @@ src = ["app", "tests"]
 select = ["E", "W", "F", "I", "UP", "B", "S", "N", "SIM", "RUF"]
 ignore = ["RUF012"]
 
+[tool.ruff.lint.isort]
+# The local alembic/ directory must not make the alembic package look first-party.
+known-third-party = ["alembic"]
+
 [tool.ruff.lint.per-file-ignores]
 # assert is the pytest idiom.
 "tests/**" = ["S101"]
+# Migration files are generated; long lines from autogenerate are acceptable.
+"alembic/versions/**" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 warn_unreachable = true
 plugins = ["pydantic.mypy"]
-files = ["app", "tests"]
+files = ["app", "tests", "alembic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -ra"
+markers = ["db: needs the PostgreSQL named by TEST_DATABASE_URL"]

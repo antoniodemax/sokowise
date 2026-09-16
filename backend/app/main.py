@@ -1,5 +1,8 @@
 """FastAPI application factory. Uvicorn serves `app.main:app`."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,7 +10,20 @@ from app.api.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.db.session import create_engine, create_session_factory
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIDMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """One engine per process; routes get sessions from `app.state.session_factory`."""
+    engine = create_engine(app.state.settings)
+    app.state.engine = engine
+    app.state.session_factory = create_session_factory(engine)
+    try:
+        yield
+    finally:
+        await engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -17,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
+        lifespan=lifespan,
         # Interactive docs stay off in production until an auth story exists for them.
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,

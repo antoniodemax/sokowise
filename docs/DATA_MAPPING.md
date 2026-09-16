@@ -411,7 +411,17 @@ Every arrow from `businesses` is a `business_id NOT NULL`; the child tables also
 | Future: purchases | new purchases/purchase_items generating RESTOCK movements | ✔ additive |
 | Future: multi-branch | would need `locations` and a per-location stock table — **not** additive to `products.stock_quantity`; accepted MVP limitation |
 
-## 9. Open data questions
+## 9. Implementation notes (Phase 2, migration `b7a497cc6a27`)
+
+The schema is implemented exactly as §3 describes, plus the following database-level backstops and indexes that follow from documented rules but were not spelled out as DDL:
+
+- CHECKs: `products.stock_quantity >= 0` and `inventory_movements.quantity_after >= 0` (BR-4); `products.selling_price >= 0`, `cost_price >= 0` when present; `customers.credit_limit >= 0` when present; `sales.subtotal >= 0` and `0 <= discount_amount <= subtotal` (FR-F4); `sale_items.unit_price >= 0`, `unit_cost >= 0` when present; `credit_transactions.payment_method IN ('CASH','MPESA')` when present.
+- `sales.idempotency_hash` is `CHAR(64)` (SHA-256 hex).
+- Additional indexes for FK lookups and documented access patterns: `business_memberships(user_id)`, `refresh_tokens(user_id)`, `products(category_id)`, `customers(business_id, name)`, `sale_items(sale_id)`, `sale_items(business_id, product_id)`, `payments(sale_id)`, `inventory_movements(sale_id)`, `credit_transactions(sale_id)`, `credit_transactions(payment_id)`, `*(created_by)` on ledgers, `expenses(business_id, incurred_at)`, `ai_conversations(business_id, user_id)`, `ai_messages(conversation_id, created_at)`, `audit_logs(business_id, created_at)`, `audit_logs(business_id, entity_type, entity_id)`, `audit_logs(actor_user_id)`.
+- Enum values are enforced by named CHECK constraints (`ck_<table>_<column>`); columns are `VARCHAR`.
+- ORM relationships exist only where later phases obviously need them (`Sale.items`, `Sale.payments`, `BusinessMembership.user/business`, `User.memberships`, `Product.category`) and are all `lazy="raise"`.
+
+## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.
 2. AI message retention period (proposal: 12 months, configurable).

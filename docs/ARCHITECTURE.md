@@ -66,7 +66,7 @@ sokowise/
 └── README.md
 ```
 
-**Current state (after Phase 1):** the Vite scaffold lives in `frontend/`. `backend/` holds the application factory, settings, JSON logging, the error envelope, the request-ID middleware and the health endpoints; `models/`, `schemas/`, `repositories/`, `services/`, `analytics/`, `ai/`, `integrations/` and `api/v1/` do not exist yet and are created by the phases that need them. Middleware lives in `app/middleware/`.
+**Current state (after Phase 2):** the Vite scaffold lives in `frontend/`. `backend/` holds the application factory, settings, JSON logging, the error envelope, the request-ID middleware, the health endpoints, `app/db/` (base, engine, session dependency), `app/models/` (the 16 MVP tables) and `alembic/` (one migration, `b7a497cc6a27`). `schemas/`, `repositories/`, `services/`, `analytics/`, `ai/`, `integrations/` and `api/v1/` do not exist yet and are created by the phases that need them. Middleware lives in `app/middleware/`.
 
 ## 3. Backend architecture
 
@@ -119,7 +119,7 @@ Rules that keep this honest:
 
 ### 3.4 Concurrency and transactions
 
-- One DB session per request (`SessionLocal` via dependency).
+- One DB session per request: `app.db.session.get_session` yields an `AsyncSession` from the `async_sessionmaker` stored on `app.state` (engine created in the lifespan, disposed at shutdown). The factory uses `expire_on_commit=False` and `autoflush=False`; relationships are declared `lazy="raise"` so an accidental lazy load fails loudly instead of triggering hidden IO (`MissingGreenlet`). Load related rows explicitly (`selectinload`/`joinedload`) when a query needs them.
 - Financial operations (sale create/void, restock, repayment) use `SELECT … FOR UPDATE` on the affected `products`/`customers` rows, locked in a deterministic order (sorted UUIDs) to avoid deadlocks.
 - PostgreSQL default isolation (READ COMMITTED) plus row locks is sufficient; no serialisable transactions in MVP.
 - Idempotent sale creation: insert with `idempotency_key`; on unique violation, re-read and return the existing sale.
@@ -319,7 +319,9 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 
 - PostgreSQL 16+. One database, one schema (`public`) in MVP.
 - Conventions and constraints per DATA_MAPPING §2 and §6.
-- Migrations: Alembic, one migration per logical change, reviewed, reversible where practical. CI runs `alembic upgrade head` on a fresh database and `alembic check` for drift.
+- Migrations: Alembic (`backend/alembic/`, async env), one migration per logical change, reviewed, reversible where practical. `alembic.ini` holds no URL; `env.py` reads `DATABASE_URL` via settings unless a caller sets `sqlalchemy.url` (tests). Commands run from `backend/`: `uv run alembic upgrade head`, `uv run alembic downgrade -1`, `uv run alembic revision --autogenerate -m "..."`, `uv run alembic check`. Autogenerate output is always hand-reviewed: expression indexes render as `sa.literal_column(...)`, mixin columns need `DateTime(timezone=True)` explicitly, and the generated banner comments are removed. CI runs `alembic upgrade head` on a fresh database and `alembic check` for drift; the test suite also asserts zero drift and a `downgrade base → upgrade head` round trip.
+- Naming convention (`app/db/base.py`): `pk_<table>`, `fk_<table>_<cols>_<referred>`, `uq_<table>_<cols>`, `ck_<table>_<name>`, `ix_<table>_<cols>`. Enum columns are `VARCHAR` + named CHECK (`ck_<table>_<column>`), never native Postgres enums.
+- Mixins: `UUIDPrimaryKeyMixin` (uuid4 app-side), `CreatedAtMixin`, `TimestampMixin` (`updated_at` refreshed by SQLAlchemy `onupdate`); all timestamps `TIMESTAMPTZ`.
 - Indexes: every FK, `(business_id, <time column>)` on transactional tables, partial unique indexes for soft-deleted uniqueness.
 - Backups: Railway daily snapshots plus a weekly `pg_dump` to object storage (Phase 15); restore tested before pilot.
 - Seed/fixtures: a `seed` script creates a demo business used by tests, evals and demos.
@@ -335,7 +337,7 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 | Frontend | Vitest + React Testing Library | forms, money formatting, API client; Playwright for the core journeys (Phase 14) |
 | Security | CI | dependency audit (`pip-audit`, `npm audit`), secret scanning, ruff security rules |
 
-SQLite is not used for tests: NUMERIC semantics, partial indexes and `FOR UPDATE` differ.
+SQLite is not used for tests: NUMERIC semantics, partial indexes and `FOR UPDATE` differ. Database tests live in `backend/tests/db/`, carry the `db` marker, and run against the PostgreSQL named by `TEST_DATABASE_URL` (skipped with a visible reason when unset; CI always sets it). The session fixture runs `alembic upgrade head`; each test runs inside an outer transaction that is rolled back (`join_transaction_mode="create_savepoint"`). Async tests use the `anyio` pytest plugin that ships with Starlette's dependencies; Alembic commands invoked from async tests run in a worker thread because Alembic drives its own event loop.
 
 Definition of done for a feature: tests for happy path, validation failure, permission denial, and cross-tenant access.
 

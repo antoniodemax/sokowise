@@ -22,10 +22,17 @@ def test_settings_fail_fast_when_required_values_are_missing(
 ) -> None:
     monkeypatch.delenv("APP_ENV", raising=False)
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(ValidationError) as exc_info:
         Settings()
     missing = {str(error["loc"][0]) for error in exc_info.value.errors()}
-    assert missing == {"app_env", "cors_origins"}
+    assert missing == {"app_env", "cors_origins", "database_url"}
+
+
+def test_database_url_must_use_asyncpg_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://sokowise:sokowise@localhost:5432/sokowise")
+    with pytest.raises(ValidationError, match="postgresql\\+asyncpg"):
+        Settings()
 
 
 def test_settings_split_comma_separated_cors_origins(monkeypatch: pytest.MonkeyPatch) -> None:

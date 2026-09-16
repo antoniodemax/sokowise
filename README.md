@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** Phase 1 (backend foundation) implemented. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** Phase 2 (database schema and migrations) implemented. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 
@@ -17,7 +17,7 @@ AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, b
 ## Stack
 
 - **Frontend:** React 19, TypeScript, Vite (Tailwind CSS and shadcn/ui are added in Phase 12) — deployed on Vercel
-- **Backend:** Python 3.12, FastAPI, Pydantic, pydantic-settings; SQLAlchemy 2.x and Alembic arrive in Phase 2 — deployed on Railway
+- **Backend:** Python 3.12, FastAPI, Pydantic, pydantic-settings, SQLAlchemy 2.x (async, asyncpg), Alembic — deployed on Railway
 - **Database:** PostgreSQL 16 (Railway)
 - **Auth:** JWT access tokens + rotating refresh tokens, Argon2id (Phase 3)
 - **AI:** Anthropic Claude API, server-side only, read-only tool access to validated business data (Phase 9)
@@ -49,9 +49,10 @@ cp .env.example .env            # once; never commit .env
 ```bash
 cd backend
 uv sync
+uv run --env-file ../.env alembic upgrade head      # apply migrations (needs PostgreSQL)
 uv run uvicorn app.main:app --reload --env-file ../.env
 curl localhost:8000/health/live     # {"status":"ok"}
-curl localhost:8000/health/ready    # 503 until the database is wired in Phase 2
+curl localhost:8000/health/ready    # {"status":"ready","checks":{"database":"ok"}}
 ```
 
 **Frontend** (http://localhost:5173):
@@ -65,14 +66,17 @@ npm run dev
 **Docker Compose** (PostgreSQL 16, plus the backend in a container):
 
 ```bash
-docker compose up -d postgres       # database only
+docker compose up -d postgres       # database only (also creates sokowise_test for the test suite)
 docker compose up --build           # database + backend
+docker compose run --rm backend alembic upgrade head
 ```
+
+Without Docker, any PostgreSQL 16 works: create a role and the `sokowise` / `sokowise_test` databases, then point `DATABASE_URL` / `TEST_DATABASE_URL` at them.
 
 ## Checks
 
 ```bash
-cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
+cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy && TEST_DATABASE_URL=postgresql+asyncpg://sokowise:sokowise@localhost:5432/sokowise_test uv run pytest
 cd frontend && npm run lint && npm run build
 docker compose config --quiet
 ```

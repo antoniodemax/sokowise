@@ -30,7 +30,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 1 — Backend project foundation ◐ (implemented 2026-09-16; awaiting CI run on push and a Docker-enabled host for the compose check)
+## Phase 1 — Backend project foundation ☑ (2026-09-16; `docker compose up` still unverified locally because the development account lacks Docker socket access)
 **Objective:** a runnable, empty FastAPI service with configuration, logging, error envelope, health checks, tooling and CI, plus the repository restructure.
 
 **Tasks**
@@ -50,7 +50,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 2 — Database and migrations ☐
+## Phase 2 — Database and migrations ◐ (implemented 2026-09-16; verified against local PostgreSQL 16.15; CI run and Compose start pending)
 **Objective:** SQLAlchemy models and Alembic migrations for the 16 MVP tables in DATA_MAPPING.
 
 **Tasks**
@@ -58,7 +58,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 - Models per DATA_MAPPING §3 including CHECK constraints, partial unique indexes, composite tenant FKs.
 - Alembic initial migration (hand-reviewed), `alembic check` in CI.
 - Test harness: session fixture with per-test rollback against Postgres; factory helpers for business/user/product/customer.
-- `scripts/seed.py` for the demo/fixture business.
+- `scripts/seed.py` for the demo/fixture business — **deferred to Phase 3**: a seed needs a hashed owner password, which does not exist before authentication.
 - `/health/ready` checks DB connectivity.
 
 **Dependencies:** Phase 1.

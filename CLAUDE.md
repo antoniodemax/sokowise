@@ -6,7 +6,7 @@ SokoWise is an AI-powered business copilot for Kenyan small businesses (dukas, b
 Frontend: React 19 + TypeScript + Vite + Tailwind + shadcn/ui. Backend: Python 3.12 + FastAPI + SQLAlchemy 2.x (async) + Alembic + Pydantic. Database: PostgreSQL. Auth: JWT access tokens + rotating refresh tokens, Argon2id. AI: Anthropic Claude API (Python SDK, server-side only). Infra: Docker Compose locally; Vercel (frontend), Railway (backend + Postgres), GitHub Actions, Sentry.
 
 ## Current state
-Phase 1 implemented: `backend/` (FastAPI app factory, settings, JSON logging, error envelope, request-ID middleware, health endpoints, tests) and `frontend/` (the Vite scaffold, unchanged). No database, models, migrations, auth or AI exist yet. Check `docs/ROADMAP.md` for the active phase before starting work, and do not start a later phase without being asked.
+Phases 1–2 implemented: `backend/` (FastAPI app factory, settings, JSON logging, error envelope, request-ID middleware, health endpoints, async SQLAlchemy engine/session, the 16 MVP models in `app/models/`, one Alembic migration, PostgreSQL-backed tests) and `frontend/` (the Vite scaffold, unchanged). No auth, business endpoints or AI exist yet. Check `docs/ROADMAP.md` for the active phase before starting work, and do not start a later phase without being asked.
 
 ## Rules
 1. Read the relevant documentation before making architectural changes.
@@ -16,7 +16,7 @@ Phase 1 implemented: `backend/` (FastAPI app factory, settings, JSON logging, er
 5. Keep the architecture simple: routers → schemas → services → repositories → models. No extra layers without a concrete reason.
 6. Prefer small, testable changes.
 7. Do not mix unrelated features into one change or commit.
-8. Database changes require Alembic migrations, reviewed by hand. Never edit a migration that has been applied anywhere.
+8. Database changes require Alembic migrations, reviewed by hand (`uv run alembic revision --autogenerate`, then read the file: check `DateTime(timezone=True)`, expression/partial indexes, CHECK text). Never edit a migration that has been applied anywhere. `uv run alembic check` must be clean.
 9. Never hardcode secrets. Configuration comes from environment variables via `pydantic-settings`.
 10. Never commit `.env` files containing secrets. `.env.example` documents variables with placeholder values only.
 11. Validate all external input with Pydantic (API) and zod (frontend). Trust nothing from the client, including IDs.
@@ -54,7 +54,7 @@ Phase 1 implemented: `backend/` (FastAPI app factory, settings, JSON logging, er
 - Payment lines live in `payments` (CASH / MPESA / CREDIT). M-Pesa API integration is future work and must slot in via `payments.provider/status` without touching sales logic.
 
 ## Working conventions
-- Backend: `ruff` for lint/format, `mypy` for types, `pytest` against a real PostgreSQL (never SQLite).
+- Backend: `ruff` for lint/format, `mypy` (strict) for types, `pytest` against a real PostgreSQL (never SQLite; `tests/db/` needs `TEST_DATABASE_URL`). Relationships are `lazy="raise"`: load them explicitly.
 - Frontend: strict TypeScript, ESLint, Vitest.
 - Definition of done for an endpoint: happy path, validation failure, permission denial, and cross-tenant access tests.
 - Keep files focused; a module over ~400 lines is a signal to split by responsibility, not by layer.
