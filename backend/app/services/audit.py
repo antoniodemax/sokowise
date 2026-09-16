@@ -7,9 +7,9 @@ call it after the mutation, inside the same `transaction(session)` block.
 Action naming: `<entity>.<verb>`, lower snake case, stable (they are queried, not
 displayed). Phase 4 actions: `business.update`, `user.create`, `user.role_change`,
 `user.deactivate`, `user.reactivate`, `user.password_reset`; Phase 5: `product.price_change`,
-`product.archive`, `product.unarchive`; Phase 7: `credit.repayment`, `credit.adjust`
-(PRD FR-K1). Later phases add their own following DATA_MAPPING §3.16 (`sale.void`,
-`inventory.adjust`, …).
+`product.archive`, `product.unarchive`; Phase 7: `credit.repayment`, `credit.adjust`;
+Phase 8: `sale.void`, `sale.credit_limit_override` (PRD FR-K1). Later phases add their
+own following DATA_MAPPING §3.16 (`inventory.adjust`, …).
 
 `before`/`after` hold only the fields that changed, as JSON-safe values. Never
 pass secrets: password hashes, tokens, cookies or headers do not belong here,
@@ -41,6 +41,8 @@ class AuditAction(StrEnum):
     PRODUCT_UNARCHIVE = "product.unarchive"
     CREDIT_REPAYMENT = "credit.repayment"
     CREDIT_ADJUST = "credit.adjust"
+    SALE_VOID = "sale.void"
+    SALE_CREDIT_LIMIT_OVERRIDE = "sale.credit_limit_override"
 
 
 # Keys that must never appear in an audit payload, whatever a caller passes.

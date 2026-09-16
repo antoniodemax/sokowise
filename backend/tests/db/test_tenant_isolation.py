@@ -2,9 +2,10 @@
 
 To register a new resource type, add an `IsolationCase` to `CASES`. Registered:
 business members (Phase 4), categories and products (Phase 5), customers (Phase 6),
-customer accounts — ledger, repayments, adjustments (Phase 7).
+customer accounts — ledger, repayments, adjustments (Phase 7), sales (Phase 8).
 """
 
+import uuid
 from http import HTTPStatus
 
 import pytest
@@ -20,6 +21,7 @@ USERS_URL = "/api/v1/users"
 CATEGORIES_URL = "/api/v1/categories"
 PRODUCTS_URL = "/api/v1/products"
 CUSTOMERS_URL = "/api/v1/customers"
+SALES_URL = "/api/v1/sales"
 
 
 async def _create_staff_member(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
@@ -76,6 +78,21 @@ async def _create_debtor(api: AsyncClient, session: AsyncSession, tenant: Tenant
     )
     assert response.status_code == HTTPStatus.CREATED, response.text
     return customer_id
+
+
+async def _create_sale(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
+    product_id = await _create_product(api, session, tenant)
+    response = await api.post(
+        SALES_URL,
+        headers={**tenant.owner, "Idempotency-Key": str(uuid.uuid4())},
+        json={
+            "lines": [{"product_id": product_id, "quantity": "1"}],
+            "payments": [{"method": "CASH", "amount": "150"}],
+        },
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    sale_id: str = response.json()["id"]
+    return sale_id
 
 
 CASES: list[IsolationCase] = [
@@ -144,6 +161,13 @@ CASES: list[IsolationCase] = [
                 {"amount": "1", "direction": "DECREASE", "reason": "hijack"},
             ),
         ),
+    ),
+    IsolationCase(
+        name="sales",
+        create_in=_create_sale,
+        read_url=lambda sale_id: f"{SALES_URL}/{sale_id}",
+        list_url=SALES_URL,
+        mutations=(("POST", lambda sale_id: f"{SALES_URL}/{sale_id}/void", {"reason": "hijack"}),),
     ),
 ]
 

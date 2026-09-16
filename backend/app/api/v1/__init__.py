@@ -8,6 +8,7 @@ from app.api.v1.categories import router as categories_router
 from app.api.v1.customers import router as customers_router
 from app.api.v1.debtors import router as debtors_router
 from app.api.v1.products import router as products_router
+from app.api.v1.sales import router as sales_router
 from app.api.v1.users import router as users_router
 
 router = APIRouter(prefix="/api/v1")
@@ -18,3 +19,4 @@ router.include_router(categories_router)
 router.include_router(products_router)
 router.include_router(customers_router)
 router.include_router(debtors_router)
+router.include_router(sales_router)

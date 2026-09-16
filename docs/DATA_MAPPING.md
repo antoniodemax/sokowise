@@ -456,6 +456,14 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - Negative balances (BR-7 "credit in favour") arise only from a repayment with `allow_overpayment` or, later, a REVERSAL (BR-8); ADJUSTMENT rows never take a balance below zero.
 - `audit_logs.action` values added: `credit.repayment`, `credit.adjust`; `entity_type` `customer`, `entity_id` the customer; payloads hold entry id, amounts, method/reason and balances — never name or phone.
 
+### 9.6 Sales phase notes (no schema change)
+
+- `sales.idempotency_key` comes from the mandatory `Idempotency-Key` header; `idempotency_hash` is SHA-256 of the canonical validated request. Same key + same hash replays the sale; different hash is a 409; concurrent duplicates are settled by `uq_sales_business_id_idempotency_key`.
+- `sale_items.unit_cost` is `products.cost_price` at sale time (NULL stays NULL); `inventory_movements.unit_cost` on SALE / SALE_REVERSAL rows is the same snapshot; `total_cost` = |quantity| × unit_cost.
+- `payments` rows are always `CONFIRMED` / `MANUAL` in MVP; a CREDIT row is mirrored by exactly one CHARGE in `credit_transactions` (`sale_id`, `payment_id` set). A void writes one REVERSAL (`sale_id` set, `reason` = the void reason) for the full charged amount.
+- Lock order inside a sale: products by id ascending, then the customer. Void: the sale row, then products by id, then the customer.
+- `audit_logs.action` values added: `sale.void`, `sale.credit_limit_override` (`entity_type` `sale`).
+
 ## 10. Open data questions
 
 1. Weighted-average vs latest cost for COGS. MVP: latest `cost_price` snapshot. Revisit if pilot owners restock at volatile prices.

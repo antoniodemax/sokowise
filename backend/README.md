@@ -75,6 +75,15 @@ Customer accounts (docs/ARCHITECTURE.md §5.8):
 Repayments and adjustments accept an optional `Idempotency-Key: <uuid>` header: a retry with the same
 key and body returns the original entry (200); a different body is a 409.
 
+Sales (docs/ARCHITECTURE.md §5.9):
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/sales` (+ `Idempotency-Key: <uuid>`) | lines, tender lines (CASH/MPESA/CREDIT, must sum to the total), optional customer, discount, note, OWNER-only `sold_at` — members |
+| `GET /api/v1/sales?date_from=&date_to=&customer_id=&limit=` | newest first; STAFF see only their own sales from today — members |
+| `GET /api/v1/sales/{id}` | one sale with item snapshots and tenders |
+| `POST /api/v1/sales/{id}/void` | reason required; reverses stock and credit, audited — OWNER |
+
 Money and quantities are decimal strings in JSON (`"150.00"`, `"12.500"`).
 
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
@@ -123,13 +132,13 @@ app/
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
 ├── schemas/           Pydantic request/response models (auth), identifier normalisation
 ├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs,
-│                      categories, products, inventory movements, customers, credit)
+│                      categories, products, inventory movements, customers, credit, sales)
 ├── services/          transactions and rules (auth, business, members, audit, categories,
-│                      products, inventory primitive, customers, credit ledger)
+│                      products, inventory primitive, customers, credit ledger, sales, money)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
                        v1/ (routers mounted at /api/v1: auth, business, users, categories,
-                       products, customers, debtors)
+                       products, customers, debtors, sales)
 alembic/               migrations (async env; two revisions); alembic.ini holds no URL
 tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api`/`tenants` fixtures;
                        register tenant-scoped endpoints in tests/db/test_tenant_isolation.py)

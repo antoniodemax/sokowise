@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.7 — Phase 7 (credit ledger) implemented |
+| Status | Draft v0.8 — sales and payments implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -153,24 +153,31 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 6 — Sales and payments ◐ (customers create/get/list/search implemented 2026-09-16; sales pending)
+## Phase 6 — Sales and payments ◐ (customers and sales implemented 2026-09-16; CI run pending)
 **Objective:** record and void sales with split payments, including the customer records a credit sale needs.
 
 **Tasks**
-- `POST /sales` (idempotency key, lines, payments, optional customer, optional backdate for OWNER); `GET /sales`, `GET /sales/{id}`, `POST /sales/{id}/void`.
-- Single-transaction creation per DATA_MAPPING §6; stock validation; price override recording; discount validation; BR-1 enforcement.
+- ☑ `POST /sales` (idempotency key, lines, payments, optional customer, optional backdate for OWNER); `GET /sales`, `GET /sales/{id}`, `POST /sales/{id}/void` — ARCHITECTURE §5.9.
+- ☑ Single-transaction creation per DATA_MAPPING §6; stock validation; price override recording; discount validation; BR-1 enforcement.
 - ☑ Customers: create, get, list, search (name/phone) — the minimum a credit sale needs (ARCHITECTURE §5.7; `tests/db/test_customers_api.py`, isolation case `customers`, phone race in `test_catalog_concurrency.py`; 405 tests pass locally). No schema change; no audit on creation. Archive, PII scrub, repayments, adjustments, ledger view and debtors move to Phase 7.
-- CREDIT payment lines create `CHARGE` ledger entries and update `customers.balance` inside the sale transaction; void writes the `REVERSAL`. The rest of the credit module (repayments, adjustments, limits) is Phase 7.
-- Sale-level discount allocated to lines (`sale_items.discount_allocated`, BR-14) with largest-remainder rounding.
-- Idempotency: store `idempotency_hash`; same key + same payload → 200 with the original; same key + different payload → 409.
-- Void reverses stock and credit; audit row.
-- STAFF sees own, same-day sales only.
+- ☑ CREDIT payment lines create `CHARGE` ledger entries through `services.credit.post_entry` inside the sale transaction; void writes the `REVERSAL`; `enforce_credit_limit` runs first (STAFF blocked, OWNER override audited).
+- ☑ Sale-level discount allocated to lines (`sale_items.discount_allocated`, BR-14) with largest-remainder rounding (`services/money.py`).
+- ☑ Idempotency: store `idempotency_hash`; same key + same payload → 200 with the original; same key + different payload → 409.
+- ☑ Void reverses stock and credit; audit row.
+- ☑ STAFF sees own, same-day sales only (business timezone).
+
+**Notes recorded while implementing sales**
+- Sale responses omit `unit_cost` and profit (analytics are OWNER-only, PRD §16); COGS/profit come in the analytics phase from `sale_items`.
+- Sale creation is not audited (FR-K1); `sale.void` and `sale.credit_limit_override` are.
+- A 100 % discount cannot be recorded because tender lines must be > 0 (DATA_MAPPING §3.11); a free hand-out is not a sale. Flagged for PRD §19.
+- Listing has no status filter yet; voided sales appear with `status = VOIDED`.
 
 **Dependencies:** Phase 5.
 
 **Completion criteria**
-- Tests: cash sale; M-Pesa sale with reference; split payment; credit sale requires customer; insufficient stock rejected; idempotent retry returns same sale with no duplicate movements; same key with different payload → 409; void restores stock and balance; void of a sale whose product was archived afterwards still writes reversals; Σ `discount_allocated` = `discount_amount` on awkward splits (e.g. 100 across three lines); STAFF cannot void or backdate.
-- Money arithmetic tests for rounding (BR-9).
+- Tests: cash sale; M-Pesa sale with reference; split payment; credit sale requires customer; insufficient stock rejected; idempotent retry returns same sale with no duplicate movements; same key with different payload → 409; void restores stock and balance; void of a sale whose product was archived afterwards still writes reversals; Σ `discount_allocated` = `discount_amount` on awkward splits (e.g. 100 across three lines); STAFF cannot void or backdate. — **Met** (`tests/db/test_sales_api.py`, `test_sales_concurrency.py`, `test_sales_accounting.py`, `tests/test_money.py`; 523 tests pass locally).
+- Money arithmetic tests for rounding (BR-9). — **Met**.
+- Pending before ☑: CI green.
 
 ---
 

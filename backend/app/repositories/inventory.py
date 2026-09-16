@@ -31,3 +31,17 @@ async def list_movements_for_product(
         .order_by(InventoryMovement.created_at, InventoryMovement.id)
     )
     return list(result)
+
+
+async def list_movements_for_sale(
+    session: AsyncSession, *, business_id: uuid.UUID, sale_id: uuid.UUID
+) -> list[InventoryMovement]:
+    result = await session.scalars(
+        select(InventoryMovement)
+        .where(
+            InventoryMovement.business_id == business_id,
+            InventoryMovement.sale_id == sale_id,
+        )
+        .order_by(InventoryMovement.created_at, InventoryMovement.id)
+    )
+    return list(result)

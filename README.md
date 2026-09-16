@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** Phase 7 credit ledger (repayments, adjustments, ledger, debtors, credit limits) implemented; sales next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** sales and payments implemented (cash / M-Pesa / credit tenders, stock and ledger integration, void); inventory endpoints and analytics next. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 
