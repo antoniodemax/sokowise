@@ -272,11 +272,13 @@ Customer credit ledger. Append-only.
 | reference | VARCHAR(64) NULL | M-Pesa code for repayment |
 | provider_transaction_id | UUID NULL | Future FK → `mpesa_transactions.id` |
 | reason | VARCHAR(255) NULL | Required for ADJUSTMENT |
+| idempotency_key | UUID NULL | Client-generated, for REPAYMENT/ADJUSTMENT retries (Phase 7, migration `e73124c3e89a`); NULL for CHARGE/REVERSAL |
+| idempotency_hash | CHAR(64) NULL | SHA-256 of the canonical request; same key + different hash → 409 |
 | occurred_at | TIMESTAMPTZ NOT NULL | |
 | created_by | UUID NOT NULL FK users | |
 | created_at | | |
 
-Constraints: `CHECK (entry_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`; `CHECK (entry_type <> 'REPAYMENT' OR payment_method IS NOT NULL)`. `customers.balance` updated in the same transaction with `SELECT … FOR UPDATE` on the customer row. Index `(business_id, customer_id, occurred_at)`.
+Constraints: `UNIQUE (business_id, idempotency_key) WHERE idempotency_key IS NOT NULL`; `CHECK (entry_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`; `CHECK (entry_type <> 'REPAYMENT' OR payment_method IS NOT NULL)`. `customers.balance` updated in the same transaction with `SELECT … FOR UPDATE` on the customer row. Index `(business_id, customer_id, occurred_at)`.
 
 Repayments are against the customer, not a specific sale (PRD FR-G3). "Age of oldest unpaid charge" for the debtors list is computed FIFO from the ledger at query time.
 
@@ -446,6 +448,13 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - `customers.phone` is stored in E.164 via the same normalisation as `users.phone`; the partial unique index `uq_customers_business_id_phone` is the only duplicate rule (per business, only when a phone is present).
 - `customers.balance` is written only by ledger code (none yet); the API returns it read-only and never accepts it.
 - Search uses the existing `(business_id, name)` index for ordering; the name match is a substring and the phone match a prefix/contains LIKE — acceptable for MVP customer counts (tens to low hundreds per business). A trigram index is the upgrade path if search ever slows.
+
+### 9.5 Phase 7 notes (migration `e73124c3e89a`)
+
+- `credit_transactions` gained nullable `idempotency_key` / `idempotency_hash` with a partial unique index per business — the `sales` idempotency pattern applied to repayments and adjustments. No other schema change.
+- `customers.balance` is written only by `services.credit.post_entry`, under the customer row lock, in the same transaction as the ledger row; `balance_after` is computed from the locked cache. Verification: Σ `amount` per customer equals `balance` (asserted after every operation in the tests).
+- Negative balances (BR-7 "credit in favour") arise only from a repayment with `allow_overpayment` or, later, a REVERSAL (BR-8); ADJUSTMENT rows never take a balance below zero.
+- `audit_logs.action` values added: `credit.repayment`, `credit.adjust`; `entity_type` `customer`, `entity_id` the customer; payloads hold entry id, amounts, method/reason and balances — never name or phone.
 
 ## 10. Open data questions
 

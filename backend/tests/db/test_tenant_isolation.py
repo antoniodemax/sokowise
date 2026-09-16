@@ -1,7 +1,8 @@
 """Every tenant-scoped endpoint, run through the isolation helper (ROADMAP Phase 4).
 
 To register a new resource type, add an `IsolationCase` to `CASES`. Registered:
-business members (Phase 4), categories and products (Phase 5), customers (Phase 6).
+business members (Phase 4), categories and products (Phase 5), customers (Phase 6),
+customer accounts — ledger, repayments, adjustments (Phase 7).
 """
 
 from http import HTTPStatus
@@ -65,6 +66,18 @@ async def _create_customer(api: AsyncClient, session: AsyncSession, tenant: Tena
     return customer_id
 
 
+async def _create_debtor(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
+    """A customer who owes 500, so the account endpoints have something to protect."""
+    customer_id = await _create_customer(api, session, tenant)
+    response = await api.post(
+        f"{CUSTOMERS_URL}/{customer_id}/adjustments",
+        headers=tenant.owner,
+        json={"amount": "500", "direction": "INCREASE", "reason": "opening balance"},
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    return customer_id
+
+
 CASES: list[IsolationCase] = [
     IsolationCase(
         name="users",
@@ -108,6 +121,29 @@ CASES: list[IsolationCase] = [
         read_url=lambda customer_id: f"{CUSTOMERS_URL}/{customer_id}",
         # Search by the exact phone must not surface another tenant's customer either.
         list_url=f"{CUSTOMERS_URL}?include_archived=true&q=0712345678",
+    ),
+    IsolationCase(
+        name="customer-accounts",
+        create_in=_create_debtor,
+        read_url=lambda customer_id: f"{CUSTOMERS_URL}/{customer_id}/ledger",
+        list_url="/api/v1/debtors",
+        mutations=(
+            (
+                "POST",
+                lambda customer_id: f"{CUSTOMERS_URL}/{customer_id}/repayments",
+                {"amount": "1", "payment_method": "CASH"},
+            ),
+            (
+                "POST",
+                lambda customer_id: f"{CUSTOMERS_URL}/{customer_id}/adjustments",
+                {"amount": "1", "direction": "INCREASE", "reason": "hijack"},
+            ),
+            (
+                "POST",
+                lambda customer_id: f"{CUSTOMERS_URL}/{customer_id}/adjustments",
+                {"amount": "1", "direction": "DECREASE", "reason": "hijack"},
+            ),
+        ),
     ),
 ]
 

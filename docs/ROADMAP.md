@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.6 — Phase 6 (customers slice) implemented |
+| Status | Draft v0.7 — Phase 7 (credit ledger) implemented |
 | Last updated | 2026-09-16 |
 | Related docs | [PRD.md](PRD.md) · [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -174,21 +174,29 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 7 — Customers and credit ☐
+## Phase 7 — Customers and credit ◐ (credit ledger implemented 2026-09-16; customer update/archive/PII scrub pending)
 **Objective:** complete the customer module and the credit ledger.
 
 **Tasks**
-- Customers: update, archive, PII scrub endpoint (create/get/list/search shipped in Phase 6).
-- `POST /customers/{id}/repayments`, `POST /customers/{id}/adjustments` (OWNER), `GET /customers/{id}/ledger`.
-- Debtors list with oldest-charge age (FIFO).
-- Credit-limit rule (FR-G5: STAFF blocked, OWNER warned).
-- STAFF can view customer balance and ledger (PRD §16); OWNER-only for adjustments.
-- `recompute_caches` extended to `customers.balance`.
+- ☐ Customers: update, archive, PII scrub endpoint (create/get/list/search shipped in Phase 6).
+- ☑ `POST /customers/{id}/repayments` (members), `POST /customers/{id}/adjustments` (OWNER), `GET /customers/{id}/ledger` — ARCHITECTURE §5.8.
+- ☑ Debtors list with oldest-charge age (FIFO): `GET /api/v1/debtors?sort=balance|age`.
+- ☑ Credit-limit rule (FR-G5: STAFF blocked, OWNER warned): `services.credit.evaluate_credit_limit` / `enforce_credit_limit`, the primitive the sales phase calls before posting a CHARGE. No endpoint charges a customer yet.
+- ☑ STAFF can view customer balance and ledger (PRD §16); OWNER-only for adjustments.
+- ☐ `recompute_caches` extended to `customers.balance` (the script itself is still pending from Phase 5; `repositories.credit.sum_entries` is the recompute).
+- ☑ Idempotency for repayments/adjustments (`Idempotency-Key` header; migration `e73124c3e89a`).
+
+**Notes recorded while implementing (PRD §19 candidates)**
+- BR-7 allows a negative balance ("credit in favour"); Phase 7 makes that *explicit*: a repayment beyond the debt is 409 `REPAYMENT_EXCEEDS_BALANCE` unless the request carries `allow_overpayment: true`, and an adjustment can never push a balance below zero. This protects against typos and double entries on flaky connections without contradicting BR-7.
+- Repayments cannot be backdated (no `occurred_at` in the request); `occurred_at` = posting time. Backdating, if ever needed, is an OWNER feature to specify.
+- The ledger is ordered by `occurred_at` (newest first); `balance_after` is in posting order — identical until something backdates.
+- Sales integration (deferred to the sales phase): post `CHARGE` (with `sale_id`, `payment_id`) and `REVERSAL` (`allow_negative=True`, BR-8) through `services.credit.post_entry` inside the sale transaction, after `enforce_credit_limit`.
 
 **Dependencies:** Phase 6.
 
 **Completion criteria**
-- Ledger tests: charge → partial repayment → void → balance correct; adjustment requires reason; limit enforcement by role; isolation tests.
+- Ledger tests: charge → partial repayment → void → balance correct (☑ charge/repayment/adjustment trace; void is the sales phase); adjustment requires reason ☑; limit enforcement by role ☑; isolation tests ☑ (`tests/db/test_credit_api.py`, `test_credit_concurrency.py`, isolation case `customer-accounts`; 451 tests pass locally).
+- Pending before ☑: customer update/archive/PII scrub; recompute script.
 
 ---
 

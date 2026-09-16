@@ -79,3 +79,15 @@ async def get_customer(
         select(Customer).where(Customer.business_id == business_id, Customer.id == customer_id)
     )
     return result.one_or_none()
+
+
+async def get_customer_for_update(
+    session: AsyncSession, *, business_id: uuid.UUID, customer_id: uuid.UUID
+) -> Customer | None:
+    """`SELECT … FOR UPDATE`: every ledger write holds this lock (DATA_MAPPING §3.12)."""
+    result = await session.scalars(
+        select(Customer)
+        .where(Customer.business_id == business_id, Customer.id == customer_id)
+        .with_for_update()
+    )
+    return result.one_or_none()

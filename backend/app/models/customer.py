@@ -21,6 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -83,6 +84,16 @@ class CreditTransaction(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Index(None, "sale_id"),
         Index(None, "payment_id"),
         Index(None, "created_by"),
+        # Idempotent repayments/adjustments (same pattern as sales): a retry with the same
+        # key and hash returns the original entry, a different hash is a 409. CHARGE and
+        # REVERSAL rows come from sales and carry no key.
+        Index(
+            "uq_credit_transactions_business_id_idempotency_key",
+            "business_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     business_id: Mapped[uuid.UUID] = mapped_column(
@@ -104,6 +115,9 @@ class CreditTransaction(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     reference: Mapped[str | None] = mapped_column(String(64))
     provider_transaction_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     reason: Mapped[str | None] = mapped_column(String(255))
+    idempotency_key: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    # SHA-256 of the canonical request payload; set together with idempotency_key.
+    idempotency_hash: Mapped[str | None] = mapped_column(CHAR(64))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False

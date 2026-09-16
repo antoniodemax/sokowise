@@ -63,6 +63,18 @@ Customers (members read and create; docs/ARCHITECTURE.md §5.7):
 | `POST /api/v1/customers` | create (name, optional phone/notes/credit_limit); duplicate phone in the business → 409 |
 | `GET /api/v1/customers/{id}` | one customer, with the read-only ledger `balance` |
 
+Customer accounts (docs/ARCHITECTURE.md §5.8):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/customers/{id}/ledger?limit=` | balance, credit limit and entries (newest first) — members |
+| `POST /api/v1/customers/{id}/repayments` | record CASH/MPESA repayment; 409 above the balance unless `allow_overpayment` — members |
+| `POST /api/v1/customers/{id}/adjustments` | INCREASE/DECREASE with a reason; never below zero — OWNER |
+| `GET /api/v1/debtors?sort=balance\|age&limit=` | customers who owe, with oldest unpaid charge (FIFO) — members |
+
+Repayments and adjustments accept an optional `Idempotency-Key: <uuid>` header: a retry with the same
+key and body returns the original entry (200); a different body is a 409.
+
 Money and quantities are decimal strings in JSON (`"150.00"`, `"12.500"`).
 
 A session response carries the access token (send it as `Authorization: Bearer …`) and sets the
@@ -111,14 +123,14 @@ app/
 ├── models/            SQLAlchemy 2.x models, one module per aggregate (16 tables)
 ├── schemas/           Pydantic request/response models (auth), identifier normalisation
 ├── repositories/      queries (users/memberships, businesses, refresh tokens, audit logs,
-│                      categories, products, inventory movements, customers)
+│                      categories, products, inventory movements, customers, credit)
 ├── services/          transactions and rules (auth, business, members, audit, categories,
-│                      products, inventory primitive, customers)
+│                      products, inventory primitive, customers, credit ledger)
 ├── middleware/        request-ID middleware and access log
 └── api/               health router, deps.py (auth chain, role guards, CSRF, rate limits),
                        v1/ (routers mounted at /api/v1: auth, business, users, categories,
-                       products, customers)
-alembic/               migrations (async env); alembic.ini holds no URL
+                       products, customers, debtors)
+alembic/               migrations (async env; two revisions); alembic.ini holds no URL
 tests/                 pytest; tests/db/ needs PostgreSQL (API tests use the `api`/`tenants` fixtures;
                        register tenant-scoped endpoints in tests/db/test_tenant_isolation.py)
 ```
