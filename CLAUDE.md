@@ -6,7 +6,7 @@ SokoWise is an AI-powered business copilot for Kenyan small businesses (dukas, b
 Frontend: React 19 + TypeScript + Vite + Tailwind + shadcn/ui. Backend: Python 3.12 + FastAPI + SQLAlchemy 2.x (async) + Alembic + Pydantic. Database: PostgreSQL. Auth: JWT access tokens + rotating refresh tokens, Argon2id. AI: Anthropic Claude API (Python SDK, server-side only). Infra: Docker Compose locally; Vercel (frontend), Railway (backend + Postgres), GitHub Actions, Sentry.
 
 ## Current state
-Phase 0 complete (documentation). No application code exists yet. The Vite scaffold at the repo root will move to `frontend/` in Phase 1. Check `docs/ROADMAP.md` for the active phase before starting work, and do not start a later phase without being asked.
+Phase 1 implemented: `backend/` (FastAPI app factory, settings, JSON logging, error envelope, request-ID middleware, health endpoints, tests) and `frontend/` (the Vite scaffold, unchanged). No database, models, migrations, auth or AI exist yet. Check `docs/ROADMAP.md` for the active phase before starting work, and do not start a later phase without being asked.
 
 ## Rules
 1. Read the relevant documentation before making architectural changes.
@@ -25,7 +25,7 @@ Phase 0 complete (documentation). No application code exists yet. The Vite scaff
 14. Do not trust AI-generated financial or inventory data. Numbers come from backend tools; the model reports them.
 15. AI responses must be validated (shape, length, allowed tool calls) before being stored, shown, or acted upon. In MVP the AI has no write path.
 16. Add tests for meaningful business logic: sales, inventory, credit, analytics, auth, permissions, tenant isolation.
-17. Run the appropriate tests after implementation (`uv run pytest` in `backend/`, `npm test` in `frontend/`) and report the actual result.
+17. Run the appropriate checks after implementation (`uv run ruff check . && uv run mypy && uv run pytest` in `backend/`; `npm run lint && npm run build` in `frontend/`) and report the actual result.
 18. Preserve backward compatibility where practical (API response shapes, migration reversibility).
 19. Do not change the visual design when working on backend functionality unless explicitly requested.
 20. Do not add dependencies without explaining why they are necessary in the PR/commit.

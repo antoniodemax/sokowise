@@ -36,6 +36,7 @@ sokowise/
 │   ├── app/
 │   │   ├── main.py          # app factory, middleware, router registration
 │   │   ├── core/            # config, security (jwt, hashing), logging, errors, deps
+│   │   ├── middleware/      # request-ID / access-log middleware
 │   │   ├── db/              # engine/session, base model, alembic env helpers
 │   │   ├── models/          # SQLAlchemy 2.x models (one module per aggregate)
 │   │   ├── schemas/         # Pydantic request/response models
@@ -65,7 +66,7 @@ sokowise/
 └── README.md
 ```
 
-**Current state:** the Vite scaffold lives at the repository root (`src/`, `index.html`, `package.json`, …) and `frontend/`/`backend/` are empty. Phase 1 moves the scaffold into `frontend/`; until then the root `package.json` is the frontend.
+**Current state (after Phase 1):** the Vite scaffold lives in `frontend/`. `backend/` holds the application factory, settings, JSON logging, the error envelope, the request-ID middleware and the health endpoints; `models/`, `schemas/`, `repositories/`, `services/`, `analytics/`, `ai/`, `integrations/` and `api/v1/` do not exist yet and are created by the phases that need them. Middleware lives in `app/middleware/`.
 
 ## 3. Backend architecture
 
@@ -108,7 +109,7 @@ Rules that keep this honest:
 
 ### 3.3 Request lifecycle
 
-1. Middleware assigns a `request_id`, starts a timer, binds logging context.
+1. `RequestIDMiddleware` assigns a `request_id`, starts a timer and binds the logging context. A client-supplied `X-Request-ID` is kept when it matches `[A-Za-z0-9._-]{1,64}`; otherwise a UUID4 is generated. The ID is returned in the `X-Request-ID` response header and written into every error envelope. The middleware is pure ASGI and sits inside CORS (the last middleware added is the outermost), so an unhandled exception becomes the 500 envelope while the ID is still bound and the response still carries CORS headers.
 2. `get_current_user` validates the access JWT → loads `User` (must be active).
 3. `get_business_context` reads `bid` from the JWT, loads the `Business` (must be `is_active`) and the user's `BusinessMembership` for it (must exist and be `is_active`), and returns `BusinessContext(business_id, user_id, role, timezone, settings)`. `role` comes from the membership row on every request; the token carries no role claim.
    3a. If `users.must_change_password` is true, only `POST /auth/change-password` and `POST /auth/logout` are allowed; everything else returns 403 `PASSWORD_CHANGE_REQUIRED`.
@@ -125,7 +126,7 @@ Rules that keep this honest:
 
 ### 3.5 Tooling
 
-- Python 3.12+, dependency management with `uv` (fast, lockfile, no extra runtime dependency), `ruff` for lint+format, `mypy` in non-strict mode, `pytest` + `httpx.AsyncClient`.
+- Python 3.12 (pinned in `backend/.python-version` so `uv` does not pick a newer interpreter), dependency management with `uv` (fast, lockfile, no extra runtime dependency), `ruff` for lint+format, `mypy` in strict mode with the pydantic plugin, `pytest` + FastAPI's `TestClient` (httpx).
 - FastAPI with async routes; SQLAlchemy 2.x with the **async** engine (`asyncpg`). Decision rationale: the AI endpoint streams and waits on network; async avoids tying up threads. All repositories are async.
 - Alembic for migrations; autogenerate is a starting point, every migration is reviewed by hand.
 
@@ -274,7 +275,7 @@ Designed now, built later:
   ```json
   { "error": { "code": "PRODUCT_NOT_FOUND", "message": "Product not found", "details": null, "request_id": "…" } }
   ```
-- Domain exceptions (`NotFoundError`, `ValidationError`, `PermissionDeniedError`, `ConflictError`, `InsufficientStockError`, `CreditLimitExceededError`, `AIUnavailableError`) are raised by services and mapped to HTTP status codes by one exception handler module.
+- Domain exceptions (`NotFoundError`, `ValidationError`, `PermissionDeniedError`, `ConflictError`, `InsufficientStockError`, `CreditLimitExceededError`, `AIUnavailableError`) subclass `app.core.errors.AppError` (which carries `status_code`, `code`, a user-safe `message` and optional `details`) and are mapped to HTTP by the handlers in that module. Framework-level failures use fixed codes: `VALIDATION_ERROR` (422, with `details` = list of `{loc, msg, type}`), `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`, `FORBIDDEN`, `CONFLICT`, `RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `HTTP_ERROR` (other statuses) and `INTERNAL_ERROR` (500).
 - Pydantic validation errors are reformatted into the envelope with field-level `details`.
 - Unhandled exceptions → 500 with a generic message and `request_id`; full details go to logs and Sentry. Stack traces, SQL, and internal identifiers never reach the client (CLAUDE.md rule 25).
 - Cross-tenant access → 404, never 403.
@@ -285,7 +286,8 @@ Designed now, built later:
 - Log levels: INFO for requests, WARNING for domain rejections that matter (credit limit, stock), ERROR for unexpected failures.
 - Sentry: backend and frontend, with `request_id` as a tag; PII scrubbing enabled.
 - AI calls log model, tokens, cache hits, latency, tool names (not tool outputs).
-- Health endpoints: `/health/live` (process up) and `/health/ready` (DB reachable).
+- Health endpoints: `/health/live` (process up → `{"status":"ok"}`) and `/health/ready` (`{"status":"ready"|"not_ready","checks":{...}}`; 503 with `checks.database = "not_configured"` until Phase 2 adds the real check).
+- Log records are one JSON object per line with `timestamp`, `level`, `logger`, `message`, `request_id` when bound, and any `extra` fields. The access line (`logger = app.access`) carries `method`, `path`, `status`, `duration_ms`; uvicorn's own access log is disabled to avoid duplicates.
 
 ## 10. Configuration and environment variables
 
@@ -293,7 +295,9 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `APP_ENV` | yes | `development` / `test` / `production` |
+| `APP_ENV` | yes | `development` / `test` / `production`; production disables `/docs` and `/openapi.json` |
+| `APP_NAME` | no (`SokoWise API`) | OpenAPI title |
+| `API_HOST`, `API_PORT` | no (`0.0.0.0`, `8000`) | bind address for the container `CMD`; Railway's `PORT` mapping is decided in Phase 15 |
 | `DATABASE_URL` | yes | `postgresql+asyncpg://…` |
 | `JWT_SECRET` | yes | ≥ 32 random bytes |
 | `ACCESS_TOKEN_TTL_MINUTES` | no (15) | |

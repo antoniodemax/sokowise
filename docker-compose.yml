@@ -1,0 +1,43 @@
+# Local development stack (docs/ARCHITECTURE.md §13).
+# Values come from .env (copy .env.example); the defaults below are for local development only.
+#
+#   docker compose up -d postgres      # database only; run the backend with uv on the host
+#   docker compose up --build          # database + backend in containers
+
+name: sokowise
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sokowise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sokowise}
+      POSTGRES_DB: ${POSTGRES_DB:-sokowise}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sokowise} -d ${POSTGRES_DB:-sokowise}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      API_PORT: 8000
+      # Consumed from Phase 2 onward; set now so the container is wired to the database service.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sokowise}:${POSTGRES_PASSWORD:-sokowise}@postgres:5432/${POSTGRES_DB:-sokowise}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

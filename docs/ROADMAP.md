@@ -30,7 +30,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 1 — Backend project foundation ☐
+## Phase 1 — Backend project foundation ◐ (implemented 2026-09-16; awaiting CI run on push and a Docker-enabled host for the compose check)
 **Objective:** a runnable, empty FastAPI service with configuration, logging, error envelope, health checks, tooling and CI, plus the repository restructure.
 
 **Tasks**
