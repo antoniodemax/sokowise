@@ -9,7 +9,29 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The workflow only reads the repository; nothing here needs a writable token.
+permissions:
+  contents: read
+
 jobs:
+  secrets:
+    name: Secrets (gitleaks, no tracked .env)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # scan the whole history, not just the last commit
+      - name: No environment file is tracked
+        run: |
+          if git ls-files | grep -E '(^|/)\.env(\..*)?$' | grep -v '\.example$'; then
+            echo "::error::an environment file is tracked; remove it and rotate its contents"
+            exit 1
+          fi
+      - name: Scan history and tree for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+
   backend:
     name: Backend (ruff, mypy, pytest, alembic)
     runs-on: ubuntu-latest
