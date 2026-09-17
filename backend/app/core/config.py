@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"  # noqa: S104 — the container binds all interfaces by design
     api_port: int = Field(default=8000, ge=1, le=65535)
     log_level: LogLevel = "INFO"
+    # Error reporting (docs/ARCHITECTURE.md §9). Unset → Sentry is not initialised.
+    sentry_dsn: str | None = None
     # NoDecode: read the raw env string; the validator below splits it on commas.
     cors_origins: Annotated[list[str], NoDecode]
     # Optional regex for origins that cannot be listed exactly, such as Vercel preview
@@ -30,6 +32,11 @@ class Settings(BaseSettings):
     cors_origin_regex: str | None = None
     # postgresql+asyncpg://user:password@host:port/database (docs/ARCHITECTURE.md §10).
     database_url: PostgresDsn
+    # Connection pool per process and the server-side statement timeout (§3.4). A stuck
+    # statement (lock wait, runaway query) is cancelled instead of holding a connection.
+    db_pool_size: int = Field(default=5, ge=1, le=50)
+    db_max_overflow: int = Field(default=5, ge=0, le=50)
+    db_statement_timeout_ms: int = Field(default=30_000, ge=1_000, le=600_000)
 
     # --- Authentication (docs/ARCHITECTURE.md §5) ---
     # HS256 signing key for access tokens; at least 32 characters, never defaulted.
@@ -68,6 +75,15 @@ class Settings(BaseSettings):
     # Per-user burst limit on the ask endpoint (in-process, like the auth limits).
     rate_limit_ai_messages_per_minute: int = Field(default=10, ge=1)
 
+    # --- Supplier receipts (docs/ARCHITECTURE.md §6.7) ---
+    # Where receipt images are kept. Local filesystem in development; an object-storage
+    # backend is the production path (same key layout). Relative paths resolve from the
+    # process working directory.
+    receipt_storage_dir: str = "var/receipts"
+    receipt_max_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=32 * 1024 * 1024)
+    receipt_max_pixels: int = Field(default=25_000_000, ge=1_000_000)
+    receipt_min_side_px: int = Field(default=200, ge=32)
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_cors_origins(cls, value: object) -> object:
@@ -87,7 +103,18 @@ class Settings(BaseSettings):
     def _normalise_origin(origin: object) -> str:
         return str(origin).strip().rstrip("/")
 
-    @field_validator("cors_origin_regex", "cookie_domain", "jwt_issuer", "jwt_audience")
+    @field_validator("cors_origins")
+    @classmethod
+    def reject_wildcard_origins(cls, value: list[str]) -> list[str]:
+        """The allow-list doubles as the CSRF Origin check, so `*` can never be an entry."""
+        if any(item == "*" or item.startswith("*") for item in value):
+            msg = "CORS_ORIGINS must list exact origins; a wildcard is not allowed"
+            raise ValueError(msg)
+        return value
+
+    @field_validator(
+        "cors_origin_regex", "cookie_domain", "jwt_issuer", "jwt_audience", "sentry_dsn"
+    )
     @classmethod
     def blank_is_none(cls, value: str | None) -> str | None:
         """`.env` files set optional values to an empty string; treat that as unset."""
@@ -113,6 +140,25 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.cookie_samesite == "none" and not self.cookie_secure:
             msg = "COOKIE_SAMESITE=none requires COOKIE_SECURE=true (browsers reject it otherwise)"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def check_production_configuration(self) -> "Settings":
+        """Refuse to start production with development placeholders (docs/OPERATIONS.md)."""
+        if not self.is_production:
+            return self
+        if self.jwt_secret.get_secret_value().startswith("change-me"):
+            msg = "JWT_SECRET still holds the .env.example placeholder"
+            raise ValueError(msg)
+        if self.cors_origin_regex in {".*", "^.*$", ".+", "^.+$"}:
+            msg = "CORS_ORIGIN_REGEX must not match every origin"
+            raise ValueError(msg)
+        if not self.receipt_storage_dir.startswith("/"):
+            msg = (
+                "RECEIPT_STORAGE_DIR must be an absolute path to persistent storage in "
+                "production (a mounted volume); the relative default is development-only"
+            )
             raise ValueError(msg)
         return self
 

@@ -2,7 +2,7 @@
 
 AI-powered business copilot for Kenyan small businesses — dukas, mini-shops, boutiques, salons, small restaurants, electronics shops. Record sales, stock, customer credit and expenses on a phone in seconds, then ask your business questions like "what sold most this week?" or "who owes me money?".
 
-**Status:** the business backend is complete for MVP; the frontend foundation, the core business workflows (sell, sales, products, inventory, customers, expenses, analytics, settings), the public homepage and the read-only AI copilot (needs `ANTHROPIC_API_KEY`) are in place. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
+**Status:** the business backend is complete for MVP; the frontend foundation, the core business workflows (sell, sales, products, inventory, customers, expenses, analytics, settings), the public homepage, the read-only AI copilot and supplier-receipt scanning (both need `ANTHROPIC_API_KEY` and API billing for the live model; everything else works without it) are in place. Production deployment, backup/recovery and retention procedures, and what still needs configuring on the hosting platforms, are in `docs/OPERATIONS.md`. See [docs/ROADMAP.md](docs/ROADMAP.md) for the phase plan.
 
 ## Documentation
 

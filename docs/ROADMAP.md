@@ -207,7 +207,7 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 8 — Expenses and analytics ◐ (analytics and expenses implemented 2026-09-16; sales/customer CSV export pending)
+## Phase 8 — Expenses and analytics ◐ (analytics and expenses implemented 2026-09-16; sales and customer CSV exports added 2026-09-17 in the Phase 15 hardening pass)
 **Objective:** expenses and the read-only analytics used by dashboard and AI.
 
 **Tasks**
@@ -247,12 +247,12 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 10 — Receipt intelligence ☐ (stretch)
+## Phase 10 — Receipt intelligence ◐ (implemented 2026-09-17 as "Phase 14"; see ARCHITECTURE §6.7)
 **Objective:** turn M-Pesa messages and receipt photos into confirmable drafts.
 
 **Tasks**
-- `POST /ai/extract` accepting text or image (size/type limits), returning a structured draft via `output_config.format`.
-- No writes; the frontend submits the confirmed draft to normal endpoints.
+- ☑ Supplier receipt workflow: `/api/v1/receipts` upload (sniffed JPEG/PNG/WebP, 8 MB, dimension bounds) → blob storage → `process` (Anthropic vision through a forced strict tool call; `FakeReceiptExtractionProvider` in tests) → backend arithmetic checks and conservative catalogue matching → owner review UI at `/inventory/receipts` → `confirm` applying every line through `services.inventory.restock_in_transaction` in one transaction. 29 backend tests (validation, roles, isolation, matching, failures, rollback per bad-line case, duplicate and concurrent confirmation, audit) and 8 frontend tests.
+- ☐ M-Pesa confirmation text extraction. ☐ Object-storage backend. ☐ Live accuracy check of the Anthropic provider (blocked on API billing).
 - Eval set of sample messages/receipts (synthetic; no real customer data in the repo).
 
 **Dependencies:** Phase 9. May be deferred past Phase 12 if the schedule slips; it must not block the pilot.
@@ -327,7 +327,9 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 15 — Docker and production infrastructure ☐
+## Phase 15 — Docker and production infrastructure ◐ (production-hardening audit and fixes 2026-09-17; see `docs/OPERATIONS.md` and PRD §21)
+
+Done in the 2026-09-17 hardening pass (no deployment yet): production start-up guards (secure cookie, no wildcard CORS, no placeholder JWT secret, absolute receipt storage path), `hide_parameters` + `statement_timeout` + explicit pool sizing, Sentry initialisation behind `SENTRY_DSN`, readiness check that fails on a pending migration and reports receipt storage, `backend/railway.toml` (migrations before traffic, health check), `frontend/vercel.json` (SPA rewrite, security headers), Dockerfile receipt directory owned by the app user, CI now runs the frontend tests, tenant-consistency fixes (foreign list filters → 404, bounded list helpers), product tracking cannot be switched off once movements exist, duplicate idempotent sale after lock wait replays, customer-balance recompute (`POST /customers/recompute`, script), sales and customer CSV exports, frontend request deadlines, non-JSON reply handling, error boundary, 404 states with a way back, phone-width tables. Still required before a pilot: everything under "REQUIRES EXTERNAL CONFIGURATION" in PRD §21 (Anthropic billing, persistent receipt volume or object storage, production secrets, database backups, a real Railway/Vercel deployment with `FORWARDED_ALLOW_IPS`, uptime monitoring, Argon2 calibration, restore drill).
 **Objective:** reproducible production builds and data safety.
 
 **Tasks**

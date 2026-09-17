@@ -35,6 +35,8 @@ Entities from the Phase 0 brief, with the decision for MVP.
 | purchases / purchase_items | **Deferred** | A restock is a single-product `inventory_movements` row with cost. Multi-line purchases with a supplier and payment terms are post-MVP; when added, each purchase_item will *generate* a RESTOCK movement, so the ledger design does not change. |
 | ai_conversations | **Yes** | Chat history per user. |
 | ai_messages | **Yes** | Messages + tool call records + token usage (audit and evals). |
+| receipts | **Yes** | Uploaded supplier receipts: storage key, extraction result, lifecycle status (§3.17). |
+| receipt_lines | **Yes** | Extracted lines, catalogue match, the owner's confirmed values and the resulting movement (§3.18). |
 | audit_logs | **Yes** | Attributable financial changes (PRD FR-K1). Lightweight. |
 | mpesa_transactions | **Deferred** | Provider-level record for Daraja (checkout request id, receipt number, callback payload). Added with the integration; linked from `payments` and `credit_transactions` via a nullable FK. |
 | attachments / receipts | **Deferred** | Phase 10 (receipt intelligence) stores the uploaded image/text and the extraction result. Not designed in detail yet. |
@@ -172,9 +174,9 @@ The stock ledger. Append-only.
 | created_by | UUID NOT NULL FK users | |
 | created_at | | |
 
-Constraints: `CHECK (movement_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`. Index on `(business_id, product_id, occurred_at)` and `(business_id, product_id, created_at)`. The service updates `products.stock_quantity` in the same transaction using `SELECT … FOR UPDATE` on the product row to serialise concurrent sales of the same product.
+Constraints: `CHECK (movement_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`. Indexes on `(business_id, product_id, occurred_at)`, `(business_id, product_id, created_at)` and `(business_id, created_at, id)` (the business-wide movements listing, newest first). The service updates `products.stock_quantity` in the same transaction using `SELECT … FOR UPDATE` on the product row to serialise concurrent sales of the same product.
 
-Rules: only `track_inventory=true` products get movements. A void writes `SALE_REVERSAL` rows for every tracked line even if the product has since been archived (`is_active=false`); archiving hides a product from sale entry, it does not stop history from being corrected.
+Rules: only `track_inventory=true` products get movements. A void writes `SALE_REVERSAL` rows for every tracked line even if the product has since been archived (`is_active=false`); archiving hides a product from sale entry, it does not stop history from being corrected. For the same reason `track_inventory` cannot be switched off once a product has any movement (409 `PRODUCT_HAS_MOVEMENTS`, in addition to the stock-must-be-zero rule): a product that was ever stocked stays tracked so its sales remain voidable.
 
 ### 3.8 customers
 | Column | Type | Notes |
@@ -278,7 +280,7 @@ Customer credit ledger. Append-only.
 | created_by | UUID NOT NULL FK users | |
 | created_at | | |
 
-Constraints: `UNIQUE (business_id, idempotency_key) WHERE idempotency_key IS NOT NULL`; `CHECK (entry_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`; `CHECK (entry_type <> 'REPAYMENT' OR payment_method IS NOT NULL)`. `customers.balance` updated in the same transaction with `SELECT … FOR UPDATE` on the customer row. Index `(business_id, customer_id, occurred_at)`.
+Constraints: `UNIQUE (business_id, idempotency_key) WHERE idempotency_key IS NOT NULL`; `CHECK (entry_type <> 'ADJUSTMENT' OR reason IS NOT NULL)`; `CHECK (entry_type <> 'REPAYMENT' OR payment_method IS NOT NULL)`. `customers.balance` updated in the same transaction with `SELECT … FOR UPDATE` on the customer row. Indexes `(business_id, customer_id, occurred_at)` and `(business_id, occurred_at)` (per-period repayment sums in analytics).
 
 Repayments are against the customer, not a specific sale (PRD FR-G3). "Age of oldest unpaid charge" for the debtors list is computed FIFO from the ledger at query time.
 
@@ -324,6 +326,53 @@ Restock spend is *not* here (BR-6).
 | created_at | | |
 
 Index `(business_id, role, created_at)` for quota counting; quotas count `role = 'user'` rows only.
+
+### 3.17 receipts
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | `UNIQUE (id, business_id)` |
+| business_id | UUID NOT NULL FK | |
+| created_by | UUID NOT NULL FK users | |
+| status | VARCHAR(20) NOT NULL | CHECK in (`UPLOADED`, `PROCESSING`, `READY_FOR_REVIEW`, `CONFIRMED`, `FAILED`, `CANCELLED`) |
+| original_filename | VARCHAR(255) NULL | as uploaded (display only) |
+| mime_type | VARCHAR(40) NOT NULL | sniffed from bytes, never the client's value |
+| size_bytes | INTEGER NOT NULL | CHECK > 0 |
+| storage_key | VARCHAR(255) NOT NULL | `receipts/{business_id}/{receipt_id}.{ext}` in the blob store; the image is never stored in the database |
+| supplier_name, receipt_number | VARCHAR NULL | as extracted; `supplier_name` may be overridden at confirmation |
+| receipt_date | DATE NULL | |
+| currency | CHAR(3) NULL | |
+| extracted_subtotal, extracted_total | NUMERIC(14,2) NULL | as printed; never recomputed |
+| extraction_provider, extraction_model | VARCHAR NULL | provenance |
+| extraction_error | VARCHAR(255) NULL | an error *code* when `FAILED` |
+| warnings | JSONB NULL | backend validation codes only (`total_mismatch`, …), never model text |
+| extracted_at, confirmed_at | TIMESTAMPTZ NULL | |
+| confirmed_by | UUID NULL FK users | |
+| created_at, updated_at | | |
+
+Indexes `(business_id, created_at)`, `(business_id, status)`. Rows are kept after confirmation as the audit trail of what was read versus what was applied.
+
+### 3.18 receipt_lines
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| business_id | UUID NOT NULL FK | |
+| receipt_id | UUID NOT NULL FK (composite with business_id) | |
+| position | INTEGER NOT NULL | order on the receipt |
+| extracted_name, extracted_sku | VARCHAR | untrusted text from the extraction |
+| extracted_quantity | NUMERIC(12,3) NOT NULL | CHECK > 0 |
+| extracted_unit_cost | NUMERIC(14,2) NOT NULL | CHECK ≥ 0 |
+| extracted_line_total | NUMERIC(14,2) NULL | as printed |
+| confidence | NUMERIC(4,3) NULL | provider's legibility estimate, 0–1 |
+| warnings | JSONB NULL | validation codes for this line |
+| match_status | VARCHAR(12) NOT NULL | CHECK in (`MATCHED`, `AMBIGUOUS`, `UNMATCHED`) |
+| matched_product_id | UUID NULL FK products (composite) | only for `MATCHED` |
+| candidate_product_ids | JSONB NULL | up to 3 ids for the owner to choose from |
+| review_status | VARCHAR(10) NOT NULL | CHECK in (`PENDING`, `APPLIED`, `SKIPPED`) |
+| final_product_id, final_quantity, final_unit_cost | | the owner's confirmed values |
+| movement_id | UUID NULL FK inventory_movements | the RESTOCK created at confirmation |
+| created_at, updated_at | | |
+
+Index `(receipt_id, position)`.
 
 ### 3.16 audit_logs
 | Column | Type | Notes |
@@ -379,7 +428,7 @@ Every arrow from `businesses` is a `business_id NOT NULL`; the child tables also
 1. Sale creation is a single transaction: lock products (`FOR UPDATE`, ordered by id to avoid deadlocks) → validate stock → insert sale, items, payments → insert SALE movements and update `stock_quantity` → if CREDIT, lock customer, insert CHARGE, update `balance` → commit. Any failure rolls everything back.
 2. Idempotency: `UNIQUE (business_id, idempotency_key)`. On conflict, compare `idempotency_hash`: equal → return the existing sale (200, not 201); different → 409 CONFLICT and no write.
 3. Void is the mirror image and is also one transaction, plus an audit row.
-4. Cached columns (`products.stock_quantity`, `customers.balance`) can be recomputed from ledgers; a maintenance command `recompute-caches` will exist and a nightly check will alert on drift.
+4. Cached columns (`products.stock_quantity`, `customers.balance`) can be recomputed from ledgers: `scripts/recompute_caches.py` (every business, dry run by default, `--apply` repairs with audit rows `inventory.recompute` / `credit.recompute`) and the OWNER endpoints `POST /inventory/recompute`, `POST /customers/recompute`. A scheduled drift check is not configured yet (docs/OPERATIONS.md §4).
 5. Analytics always filter `sales.status = 'COMPLETED'` and `expenses.deleted_at IS NULL`; money-received queries also filter `payments.status = 'CONFIRMED' AND method <> 'CREDIT'`.
 6. COGS is computed from `sale_items` only; unknown `unit_cost` contributes 0 and increments `lines_missing_cost` / `products_missing_cost` in every result that reports profit (PRD BR-16).
 7. Sale-level discount is allocated to lines at sale time (`sale_items.discount_allocated`, PRD BR-14) so product and period profit reconcile.
@@ -452,7 +501,7 @@ The schema is implemented exactly as §3 describes, plus the following database-
 ### 9.5 Phase 7 notes (migration `e73124c3e89a`)
 
 - `credit_transactions` gained nullable `idempotency_key` / `idempotency_hash` with a partial unique index per business — the `sales` idempotency pattern applied to repayments and adjustments. No other schema change.
-- `customers.balance` is written only by `services.credit.post_entry`, under the customer row lock, in the same transaction as the ledger row; `balance_after` is computed from the locked cache. Verification: Σ `amount` per customer equals `balance` (asserted after every operation in the tests).
+- `customers.balance` is written only by `services.credit.post_entry`, under the customer row lock, in the same transaction as the ledger row; `balance_after` is computed from the locked cache. The one other writer is the audited repair `services.credit.recompute_balances`, which sets the cache to Σ ledger under the same lock and never writes a ledger row. Verification: Σ `amount` per customer equals `balance` (asserted after every operation in the tests).
 - Negative balances (BR-7 "credit in favour") arise only from a repayment with `allow_overpayment` or, later, a REVERSAL (BR-8); ADJUSTMENT rows never take a balance below zero.
 - `audit_logs.action` values added: `credit.repayment`, `credit.adjust`; `entity_type` `customer`, `entity_id` the customer; payloads hold entry id, amounts, method/reason and balances — never name or phone.
 
@@ -469,7 +518,7 @@ The schema is implemented exactly as §3 describes, plus the following database-
 - RESTOCK / ADJUSTMENT / INITIAL rows are written by `services.inventory` through `apply_movement`; `quantity_delta` and `unit_cost` are quantised (0.001 / 0.01) before insert; `total_cost` = |quantity_delta| × unit_cost. ADJUSTMENT rows carry no cost.
 - `products.stock_quantity` can be re-derived: Σ `inventory_movements.quantity_delta` per product; `POST /inventory/recompute` and `scripts/recompute_caches.py` compare and repair it under the row lock without writing movements.
 - Low stock: `stock_quantity <= coalesce(products.low_stock_threshold, businesses.settings.low_stock_default_threshold)` for active tracked products.
-- Analytics read `sales` by `(business_id, sold_at)` (index `ix_sales_business_id_sold_at`), `sale_items` by `sale_id`, `payments` by `sale_id`, `credit_transactions` by `(business_id, customer_id, occurred_at)`; no pre-aggregation (FR-I7). Period bounds are UTC instants computed from local calendar days in `businesses.timezone`.
+- Analytics read `sales` by `(business_id, sold_at)` (index `ix_sales_business_id_sold_at`), `sale_items` by `sale_id`, `payments` by `sale_id`, `credit_transactions` by `(business_id, occurred_at)` for period sums and `(business_id, customer_id, occurred_at)` per customer; no pre-aggregation (FR-I7). Period bounds are UTC instants computed from local calendar days in `businesses.timezone`.
 - `audit_logs.action` values added: `inventory.restock`, `inventory.adjust`, `inventory.initial`, `inventory.recompute` (`entity_type` `product`).
 
 ### 9.8 Expenses notes (no schema change)

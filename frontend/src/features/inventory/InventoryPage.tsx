@@ -1,8 +1,9 @@
-import { AlertTriangle, ClipboardList, PackagePlus, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ClipboardList, PackagePlus, ScanLine, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button-variants'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/error-state'
 import { PageHeader } from '@/components/ui/page-header'
@@ -46,6 +47,7 @@ export default function InventoryPage() {
         description="What is running low and every stock movement."
         actions={
           <>
+            {isOwner && <Link to="/inventory/receipts" className={buttonVariants({ variant: 'outline' })}><ScanLine aria-hidden="true" /> Scan receipt</Link>}
             <Button onClick={() => setDialog('restock')}><PackagePlus aria-hidden="true" /> Restock</Button>
             {isOwner && <Button variant="outline" onClick={() => setDialog('adjust')}><SlidersHorizontal aria-hidden="true" /> Adjust</Button>}
             {isOwner && <Button variant="outline" onClick={() => setDialog('initial')}><ClipboardList aria-hidden="true" /> Opening stock</Button>}

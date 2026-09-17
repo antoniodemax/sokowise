@@ -18,6 +18,8 @@ const SaleDetailPage = lazy(() => import('@/features/sales/SaleDetailPage'))
 const ProductsPage = lazy(() => import('@/features/products/ProductsPage'))
 const ProductDetailPage = lazy(() => import('@/features/products/ProductDetailPage'))
 const InventoryPage = lazy(() => import('@/features/inventory/InventoryPage'))
+const ReceiptsPage = lazy(() => import('@/features/receipts/ReceiptsPage'))
+const ReceiptReviewPage = lazy(() => import('@/features/receipts/ReceiptReviewPage'))
 const CustomersPage = lazy(() => import('@/features/customers/CustomersPage'))
 const CustomerDetailPage = lazy(() => import('@/features/customers/CustomerDetailPage'))
 const ExpensesPage = lazy(() => import('@/features/expenses/ExpensesPage'))
@@ -62,6 +64,8 @@ export function AppRouter() {
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:customerId" element={<CustomerDetailPage />} />
               <Route element={<RequireOwner />}>
+                <Route path="/inventory/receipts" element={<ReceiptsPage />} />
+                <Route path="/inventory/receipts/:receiptId" element={<ReceiptReviewPage />} />
                 <Route path="/expenses" element={<ExpensesPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/assistant" element={<AssistantPage />} />

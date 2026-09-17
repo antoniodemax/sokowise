@@ -24,6 +24,8 @@ TENANT_TABLES = {
     "expenses",
     "ai_conversations",
     "ai_messages",
+    "receipts",
+    "receipt_lines",
     "audit_logs",
 }
 

@@ -80,6 +80,33 @@ class MoneyReceivedMethod(StrEnum):
     MPESA = "MPESA"
 
 
+class ReceiptStatus(StrEnum):
+    """Supplier receipt lifecycle (docs/DATA_MAPPING.md §3.17)."""
+
+    UPLOADED = "UPLOADED"
+    PROCESSING = "PROCESSING"
+    READY_FOR_REVIEW = "READY_FOR_REVIEW"
+    CONFIRMED = "CONFIRMED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class ReceiptMatchStatus(StrEnum):
+    """How a receipt line maps to the catalogue after backend matching."""
+
+    MATCHED = "MATCHED"
+    AMBIGUOUS = "AMBIGUOUS"
+    UNMATCHED = "UNMATCHED"
+
+
+class ReceiptLineReview(StrEnum):
+    """The owner's decision on a line at confirmation time."""
+
+    PENDING = "PENDING"
+    APPLIED = "APPLIED"
+    SKIPPED = "SKIPPED"
+
+
 class AIMessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"

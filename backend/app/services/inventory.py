@@ -131,41 +131,64 @@ def _movement_payload(movement: InventoryMovement) -> dict[str, object]:
     }
 
 
+def check_restock_permission(ctx: BusinessContext) -> None:
+    """OWNER, or STAFF when the business setting `staff_can_restock` is on."""
+    settings = BusinessSettings.model_validate(ctx.settings)
+    if ctx.role is not MembershipRole.OWNER and not settings.staff_can_restock:
+        raise PermissionDeniedError("Restocking is owner-only for this business")
+
+
+async def restock_in_transaction(
+    session: AsyncSession,
+    ctx: BusinessContext,
+    data: RestockRequest,
+    client: ClientInfo,
+    *,
+    extra_audit: dict[str, object] | None = None,
+) -> InventoryMovement:
+    """One restock inside the caller's transaction: lock, movement, optional cost update, audit.
+
+    `restock` wraps this in its own transaction; a supplier-receipt confirmation applies
+    several lines through it atomically. Permission is the caller's responsibility.
+    """
+    product = await _locked_active_tracked_product(session, ctx, data.product_id)
+    movement = await apply_movement(
+        session,
+        ctx,
+        product=product,
+        movement_type=MovementType.RESTOCK,
+        quantity_delta=data.quantity,
+        unit_cost=data.unit_cost,
+        supplier_name=data.supplier_name,
+        reason=data.reason,
+    )
+    after: dict[str, object] = _movement_payload(movement)
+    new_cost = data.unit_cost.quantize(CENT)
+    if data.update_cost_price and product.cost_price != new_cost:
+        after["cost_price"] = {"before": _plain(product.cost_price), "after": str(new_cost)}
+        product.cost_price = new_cost
+        await session.flush()
+    if extra_audit:
+        after.update(extra_audit)
+    await audit.record(
+        session,
+        ctx,
+        action=AuditAction.INVENTORY_RESTOCK,
+        entity_type=ENTITY_TYPE,
+        entity_id=product.id,
+        after=after,
+        client=client,
+    )
+    return movement
+
+
 async def restock(
     session: AsyncSession, ctx: BusinessContext, data: RestockRequest, client: ClientInfo
 ) -> InventoryMovement:
     """Stock in (an asset, never an expense — BR-6). OWNER, or STAFF when `staff_can_restock`."""
-    settings = BusinessSettings.model_validate(ctx.settings)
-    if ctx.role is not MembershipRole.OWNER and not settings.staff_can_restock:
-        raise PermissionDeniedError("Restocking is owner-only for this business")
+    check_restock_permission(ctx)
     async with transaction(session):
-        product = await _locked_active_tracked_product(session, ctx, data.product_id)
-        movement = await apply_movement(
-            session,
-            ctx,
-            product=product,
-            movement_type=MovementType.RESTOCK,
-            quantity_delta=data.quantity,
-            unit_cost=data.unit_cost,
-            supplier_name=data.supplier_name,
-            reason=data.reason,
-        )
-        after: dict[str, object] = _movement_payload(movement)
-        new_cost = data.unit_cost.quantize(CENT)
-        if data.update_cost_price and product.cost_price != new_cost:
-            after["cost_price"] = {"before": _plain(product.cost_price), "after": str(new_cost)}
-            product.cost_price = new_cost
-            await session.flush()
-        await audit.record(
-            session,
-            ctx,
-            action=AuditAction.INVENTORY_RESTOCK,
-            entity_type=ENTITY_TYPE,
-            entity_id=product.id,
-            after=after,
-            client=client,
-        )
-    return movement
+        return await restock_in_transaction(session, ctx, data, client)
 
 
 async def adjust(

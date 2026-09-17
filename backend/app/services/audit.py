@@ -10,7 +10,8 @@ displayed). Phase 4 actions: `business.update`, `user.create`, `user.role_change
 `product.archive`, `product.unarchive`; Phase 7: `credit.repayment`, `credit.adjust`;
 Phase 8: `sale.void`, `sale.credit_limit_override`; inventory: `inventory.restock`,
 `inventory.adjust`, `inventory.initial`, `inventory.recompute`; expenses: `expense.update`,
-`expense.delete` (PRD FR-K1).
+`expense.delete`; receipts: `receipt.upload`, `receipt.extract`, `receipt.confirm`,
+`receipt.cancel` (PRD FR-K1).
 
 `before`/`after` hold only the fields that changed, as JSON-safe values. Never
 pass secrets: password hashes, tokens, cookies or headers do not belong here,
@@ -42,6 +43,7 @@ class AuditAction(StrEnum):
     PRODUCT_UNARCHIVE = "product.unarchive"
     CREDIT_REPAYMENT = "credit.repayment"
     CREDIT_ADJUST = "credit.adjust"
+    CREDIT_RECOMPUTE = "credit.recompute"
     SALE_VOID = "sale.void"
     SALE_CREDIT_LIMIT_OVERRIDE = "sale.credit_limit_override"
     INVENTORY_RESTOCK = "inventory.restock"
@@ -50,6 +52,10 @@ class AuditAction(StrEnum):
     INVENTORY_RECOMPUTE = "inventory.recompute"
     EXPENSE_UPDATE = "expense.update"
     EXPENSE_DELETE = "expense.delete"
+    RECEIPT_UPLOAD = "receipt.upload"
+    RECEIPT_EXTRACT = "receipt.extract"
+    RECEIPT_CONFIRM = "receipt.confirm"
+    RECEIPT_CANCEL = "receipt.cancel"
 
 
 # Keys that must never appear in an audit payload, whatever a caller passes.

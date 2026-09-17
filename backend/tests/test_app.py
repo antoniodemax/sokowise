@@ -2,6 +2,7 @@
 
 import uuid
 from http import HTTPStatus
+from pathlib import Path
 
 import pytest
 from app.core.config import Settings
@@ -50,8 +51,11 @@ def test_cors_origins_are_normalised_to_browser_origin_form(
     assert Settings().cors_origins == ["http://localhost:5173", "https://app.example.com"]
 
 
-def test_production_settings_disable_interactive_docs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_settings_disable_interactive_docs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("RECEIPT_STORAGE_DIR", str(tmp_path))
     prod_app = create_app(Settings())
     with TestClient(prod_app) as client:
         assert client.get("/docs").status_code == HTTPStatus.NOT_FOUND
@@ -110,3 +114,38 @@ def test_blank_optional_values_are_treated_as_unset(monkeypatch: pytest.MonkeyPa
 
 def test_secret_is_not_printed_in_settings_repr() -> None:
     assert "test-only-jwt-secret" not in repr(Settings())
+
+
+def test_wildcard_cors_origins_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The allow-list doubles as the CSRF Origin check, so `*` would let any site in."""
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173,*")
+    with pytest.raises(ValidationError, match="wildcard"):
+        Settings()
+
+
+def test_production_refuses_development_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    monkeypatch.setenv("RECEIPT_STORAGE_DIR", "/data/receipts")
+    monkeypatch.setenv("JWT_SECRET", "change-me-to-at-least-32-random-characters-please")
+    with pytest.raises(ValidationError, match="JWT_SECRET"):
+        Settings()
+    monkeypatch.setenv("JWT_SECRET", "x" * 48)
+    monkeypatch.setenv("CORS_ORIGIN_REGEX", ".*")
+    with pytest.raises(ValidationError, match="CORS_ORIGIN_REGEX"):
+        Settings()
+    monkeypatch.delenv("CORS_ORIGIN_REGEX")
+    monkeypatch.setenv("RECEIPT_STORAGE_DIR", "var/receipts")
+    with pytest.raises(ValidationError, match="RECEIPT_STORAGE_DIR"):
+        Settings()
+    monkeypatch.setenv("RECEIPT_STORAGE_DIR", "/data/receipts")
+    assert Settings().is_production
+
+
+def test_sentry_is_only_initialised_with_a_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sentry_sdk
+    from app.main import init_error_reporting
+
+    monkeypatch.setenv("SENTRY_DSN", "")
+    init_error_reporting(Settings())
+    assert not sentry_sdk.is_initialized()
