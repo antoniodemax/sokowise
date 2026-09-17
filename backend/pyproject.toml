@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.13",
     "argon2-cffi>=23.1",
     "pyjwt>=2.9",
+    "anthropic>=1.6.0",
 ]
 
 [dependency-groups]
@@ -51,6 +52,9 @@ known-third-party = ["alembic"]
 "tests/**" = ["S101"]
 # Migration files are generated; long lines from autogenerate are acceptable.
 "alembic/versions/**" = ["E501"]
+# Prose the model reads: the system prompt and tool descriptions are kept as full sentences.
+"app/ai/prompts.py" = ["E501"]
+"app/ai/tools.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

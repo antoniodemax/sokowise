@@ -22,6 +22,7 @@ const CustomersPage = lazy(() => import('@/features/customers/CustomersPage'))
 const CustomerDetailPage = lazy(() => import('@/features/customers/CustomerDetailPage'))
 const ExpensesPage = lazy(() => import('@/features/expenses/ExpensesPage'))
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
+const AssistantPage = lazy(() => import('@/features/assistant/AssistantPage'))
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'))
 const NotFoundPage = lazy(() => import('@/features/placeholders/NotFoundPage'))
 
@@ -63,6 +64,7 @@ export function AppRouter() {
               <Route element={<RequireOwner />}>
                 <Route path="/expenses" element={<ExpensesPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/assistant" element={<AssistantPage />} />
               </Route>
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFoundPage />} />

@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, LayoutDashboard, Package, Receipt, Settings, ShoppingCart, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, Boxes, LayoutDashboard, Package, Receipt, Settings, ShoppingCart, Sparkles, Users, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   to: string
@@ -16,5 +16,6 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/expenses', label: 'Expenses', icon: Receipt, ownerOnly: true },
   { to: '/analytics', label: 'Analytics', icon: BarChart3, ownerOnly: true },
+  { to: '/assistant', label: 'Copilot', icon: Sparkles, ownerOnly: true },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]

@@ -224,12 +224,12 @@ Legend: ☐ not started · ◐ in progress · ☑ complete
 
 ---
 
-## Phase 9 — Claude AI integration ☐
+## Phase 9 — Claude AI integration ◐ (copilot implemented 2026-09-17 as "Phase 13"; see ARCHITECTURE §6.8)
 **Objective:** the copilot, read-only, tenant-scoped, validated.
 
 **Tasks**
-- `ai/` module: Anthropic Python SDK client, settings, tool registry with Pydantic strict schemas over Phase 8 analytics, prompt builder with cached stable prefix, guardrails, quota check, persistence to `ai_conversations`/`ai_messages`.
-- Endpoints: `POST /ai/conversations`, `GET /ai/conversations`, `GET /ai/conversations/{id}`, `POST /ai/conversations/{id}/messages` (SSE streaming).
+- ☑ `ai/` module: Anthropic Python SDK client, settings, tool registry with Pydantic strict schemas over the analytics functions, prompt builder with cached stable prefix, guardrails, quota check, persistence to `ai_conversations`/`ai_messages`. ☑ Endpoints (non-streaming JSON; SSE streaming deferred). ☑ Frontend `/assistant`. ☑ 39 backend tests (auth/roles, tenant isolation incl. per-user privacy, tool semantics and bounds, accounting definitions, quota boundaries, provider failures, bounded loop, read-only enforcement, prompt injection) and 7 frontend tests.
+- ☐ SSE streaming for `POST /ai/conversations/{id}/messages` (currently returns the full answer).
 - Eval set: fixture questions (English + Swahili), expected numbers, refusal and injection cases; CI runs with recorded tool outputs; nightly live run script.
 - Cost logging and global monthly cap; per-business quotas from `AI_DAILY_MESSAGE_LIMIT` / `AI_MONTHLY_MESSAGE_LIMIT` (server-side, not owner-editable).
 - **Pricing and cost verification (first task of the phase):** read current model pricing from the Anthropic documentation, run the eval set, measure per-message cost from `usage` (input, output, cache read), and record it in the PR. Set the quotas so a business at quota stays within the PRD §18 target; if the default model cannot meet it, evaluate a cheaper model against the eval set before changing `AI_MODEL`.

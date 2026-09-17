@@ -39,6 +39,14 @@ describe('AppRouter', () => {
     expect(window.location.pathname).toBe('/login')
   })
 
+  it('keeps the copilot behind login and, for staff, behind the owner role', async () => {
+    renderAt('/assistant', null)
+    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/login')
+    renderAt('/assistant', { ...ownerSession, role: 'STAFF' })
+    expect(await screen.findByText('Owners only')).toBeInTheDocument()
+  })
+
   it('protects a feature route too', async () => {
     renderAt('/sales', null)
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()

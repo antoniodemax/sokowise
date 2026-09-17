@@ -50,6 +50,24 @@ class Settings(BaseSettings):
     rate_limit_refresh_per_minute: int = Field(default=30, ge=1)
     rate_limit_password_change_per_minute: int = Field(default=5, ge=1)
 
+    # --- AI copilot (docs/ARCHITECTURE.md §6, PRD §20) ---
+    # Unset → the copilot endpoints answer 503 AI_NOT_CONFIGURED; the rest of the app works.
+    anthropic_api_key: SecretStr | None = None
+    ai_model: str = "claude-opus-5"
+    ai_max_output_tokens: int = Field(default=2000, ge=256, le=8000)
+    ai_thinking: Literal["adaptive", "disabled"] = "adaptive"
+    ai_request_timeout_seconds: float = Field(default=60.0, ge=5.0, le=300.0)
+    # Bounded tool loop per user message (ARCHITECTURE §6.4).
+    ai_max_tool_rounds: int = Field(default=6, ge=1, le=12)
+    # Conversation window sent to the model.
+    ai_history_messages: int = Field(default=20, ge=2, le=100)
+    # Server-side quotas per business, counted from ai_messages rows with role='user'
+    # (PRD AI-8). Operators set these; no API lets an owner change them.
+    ai_daily_message_limit: int = Field(default=10, ge=1)
+    ai_monthly_message_limit: int = Field(default=100, ge=1)
+    # Per-user burst limit on the ask endpoint (in-process, like the auth limits).
+    rate_limit_ai_messages_per_minute: int = Field(default=10, ge=1)
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_cors_origins(cls, value: object) -> object:
@@ -74,6 +92,11 @@ class Settings(BaseSettings):
     def blank_is_none(cls, value: str | None) -> str | None:
         """`.env` files set optional values to an empty string; treat that as unset."""
         return value or None
+
+    @field_validator("anthropic_api_key", mode="before")
+    @classmethod
+    def blank_key_is_none(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("database_url")
     @classmethod

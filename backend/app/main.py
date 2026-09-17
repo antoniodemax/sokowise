@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.provider import build_provider
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
 from app.core.config import Settings, get_settings
@@ -44,6 +45,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     # Per-process counters for the auth endpoints (docs/ARCHITECTURE.md §5.2).
     app.state.rate_limiter = RateLimiter()
+    # The copilot's model client; None until ANTHROPIC_API_KEY is configured (§6).
+    app.state.ai_provider = build_provider(settings)
 
     # Middleware order: the last one added is the outermost. CORS wraps the request-ID
     # layer so even the 500 envelope it produces carries CORS headers.
