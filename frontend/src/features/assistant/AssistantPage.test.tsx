@@ -31,18 +31,20 @@ describe('AssistantPage', () => {
   })
 
   it('creates a conversation, sends the question, shows the loading state and renders the real answer', async () => {
+    // The answer is released by the test, so the loading state is observable regardless of load.
+    let answer!: (response: Response) => void
     const api = mockApi({
       'GET /api/v1/ai/quota': quota,
       'GET /api/v1/ai/conversations': [],
       'GET /api/v1/ai/conversations/c1': { id: 'c1', title: null, created_at: '', updated_at: '', messages: [] },
       'POST /api/v1/ai/conversations': () => json({ id: 'c1', title: null, created_at: '2026-09-17T08:00:00Z', updated_at: '2026-09-17T08:00:00Z' }, 201),
-      'POST /api/v1/ai/conversations/c1/messages': () =>
-        new Promise((resolve) => setTimeout(() => resolve(json({ conversation_id: 'c1', user_message: userMsg, assistant_message: assistantMsg, quota: { ...quota, daily_used: 4 } })), 50)),
+      'POST /api/v1/ai/conversations/c1/messages': () => new Promise<Response>((resolve) => { answer = resolve }),
     })
     renderWithProviders(<AssistantPage />, { path: '/assistant', pattern: '/assistant' })
     await userEvent.click(await screen.findByRole('button', { name: 'How much did I make today?' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Checking your records')
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    answer(json({ conversation_id: 'c1', user_message: userMsg, assistant_message: assistantMsg, quota: { ...quota, daily_used: 4 } }))
     expect(await screen.findByText(/Today you sold KSh 4,250/)).toBeInTheDocument()
     expect(screen.getByText(/Checked: business summary · figures come from your records/)).toBeInTheDocument()
     expect(screen.getByText(/6 of 10 questions left today/)).toBeInTheDocument()
