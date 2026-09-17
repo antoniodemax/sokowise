@@ -26,7 +26,7 @@ describe('HomePage', () => {
   it('renders every section for an anonymous visitor without calling the API', () => {
     const fetchMock = renderHome()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Know your business')
-    for (const name of ['Everything you need to keep your business on track.', 'Built around how small businesses here actually run.', 'Made for the businesses on every Kenyan street.', 'Up and running in an afternoon.', 'This is the actual SokoWise, on a phone.', 'Simple, honest and built for the counter.', 'Ready to understand your business better?']) {
+    for (const name of ['Everything you need to keep your business on track.', 'Built around how small businesses here actually run.', 'Made for the businesses on every Kenyan street.', 'Up and running in an afternoon.', 'This is the actual SokoWise.', 'Simple, honest and built for the counter.', 'Ready to understand your business better?']) {
       expect(screen.getByRole('heading', { level: 2, name })).toBeInTheDocument()
     }
     expect(screen.getByRole('main')).toBeInTheDocument()
@@ -71,9 +71,17 @@ describe('HomePage', () => {
     expect(screen.queryByRole('navigation', { name: 'Site' })?.querySelector('a[href="/login"]')).toBeNull()
   })
 
-  it('labels product images as example data', () => {
+  it('labels product images as example data and describes the photographs', () => {
     renderHome()
-    expect(screen.getByRole('img', { name: /example duka/i })).toHaveAttribute('src', '/marketing/dashboard.webp')
+    const productShots = screen.getAllByRole('img', { name: /Karibu Mini Mart, an example business/i })
+    expect(productShots.map((img) => img.getAttribute('src'))).toEqual(['/marketing/dashboard-phone.webp', '/marketing/dashboard.webp'])
+    expect(screen.getByText('Example data')).toBeInTheDocument()
     expect(screen.getByText('The owner\'s dashboard, shown with example data.')).toBeInTheDocument()
+    for (const name of [/food-stall owner/i, /street-food cook/i, /fruit vendor/i]) {
+      const photo = screen.getByRole('img', { name })
+      expect(photo).toHaveAttribute('srcset')
+      expect(photo.getAttribute('src')).toMatch(/^\/marketing\/.+\.webp$/)
+    }
+    expect(screen.getByRole('link', { name: 'Unsplash' })).toHaveAttribute('href', 'https://unsplash.com/license')
   })
 })

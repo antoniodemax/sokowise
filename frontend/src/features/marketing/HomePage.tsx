@@ -90,7 +90,7 @@ export default function HomePage() {
       <main id="main" className="flex-1">
         {/* Hero */}
         <Section className="pt-10 sm:pt-16">
-          <div className="grid items-center gap-10 lg:grid-cols-[5fr_6fr] lg:gap-12">
+          <div className="grid items-center gap-12 lg:grid-cols-[5fr_6fr] lg:gap-12">
             <div>
               <p className="mb-3 text-sm font-semibold text-primary">For Kenyan small businesses</p>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">Know your business. Run it with confidence.</h1>
@@ -102,12 +102,15 @@ export default function HomePage() {
               </div>
               <p className="mt-4 text-sm text-muted-foreground">Free to try. Works on your phone. Cash, M-Pesa and credit built in.</p>
             </div>
-            <figure className="min-w-0">
-              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md">
-                <img src="/marketing/dashboard.webp" width={1280} height={800} alt="The SokoWise dashboard for an example duka: revenue, cash collected, what customers owe, gross profit, expenses and net profit for the month, with low-stock products and top debtors." className="block h-auto w-full" fetchPriority="high" />
-              </div>
-              <figcaption className="mt-2 text-center text-xs text-muted-foreground">The owner's dashboard, shown with example data.</figcaption>
-            </figure>
+            <div className="relative mx-auto mb-10 w-full max-w-xl lg:max-w-none">
+              <img src="/marketing/owner-phone-1400.webp" srcSet="/marketing/owner-phone-800.webp 800w, /marketing/owner-phone-1400.webp 1400w" sizes="(min-width: 1024px) 600px, 100vw" width={1400} height={1050} fetchPriority="high" alt="A food-stall owner in an apron smiling at his phone behind his counter." className="block aspect-[4/3] w-full rounded-2xl object-cover shadow-md" />
+              <figure className="absolute -bottom-10 left-4 w-32 sm:w-40 lg:-left-6 lg:w-44">
+                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg">
+                  <img src="/marketing/dashboard-phone.webp" width={780} height={1560} alt="The SokoWise dashboard on a phone for Karibu Mini Mart, an example business: today's revenue, cash collected and what customers owe, with products running low." className="block h-auto w-full" />
+                </div>
+                <figcaption className="mt-1.5 text-center text-[11px] text-muted-foreground">Example data</figcaption>
+              </figure>
+            </div>
           </div>
         </Section>
 
@@ -160,20 +163,29 @@ export default function HomePage() {
 
         {/* Who it's for */}
         <Section id="businesses" tone="card">
-          <SectionHeading eyebrow="Who it's for" title="Made for the businesses on every Kenyan street." lead="If it sells products or services and needs to keep track of money, stock and customers, SokoWise fits." />
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {BUSINESSES.map((b) => (
-              <li key={b.title} className="flex gap-4 rounded-xl border border-border bg-background p-5">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-foreground" aria-hidden="true">
-                  <b.icon className="size-5" />
-                </span>
-                <div>
-                  <h3 className="font-semibold">{b.title}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{b.text}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="grid gap-10 lg:grid-cols-[6fr_5fr] lg:gap-16">
+            <div>
+              <SectionHeading eyebrow="Who it's for" title="Made for the businesses on every Kenyan street." lead="If it sells products or services and needs to keep track of money, stock and customers, SokoWise fits." />
+              <ul className="grid gap-4 sm:grid-cols-2">
+                {BUSINESSES.map((b) => (
+                  <li key={b.title} className="flex gap-4 rounded-xl border border-border bg-background p-5">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-foreground" aria-hidden="true">
+                      <b.icon className="size-5" />
+                    </span>
+                    <div>
+                      <h3 className="font-semibold">{b.title}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{b.text}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="grid grid-cols-[3fr_2fr] gap-3 sm:gap-4 lg:self-center">
+              <img src="/marketing/cook-stall-900.webp" srcSet="/marketing/cook-stall-450.webp 450w, /marketing/cook-stall-900.webp 900w" sizes="(min-width: 1024px) 300px, 55vw" width={900} height={1200} loading="lazy" alt="A street-food cook turning chapatis on a pan at her roadside stall." className="row-span-2 aspect-[3/4] h-full w-full rounded-2xl object-cover" />
+              <img src="/marketing/vendor-fruit-1000.webp" srcSet="/marketing/vendor-fruit-600.webp 600w, /marketing/vendor-fruit-1000.webp 1000w" sizes="(min-width: 1024px) 200px, 40vw" width={1000} height={750} loading="lazy" alt="A fruit vendor at his stall, phone in hand, giving a thumbs-up." className="aspect-[4/3] w-full rounded-2xl object-cover" />
+              <p className="flex items-center rounded-2xl bg-primary p-4 text-sm font-medium leading-snug text-primary-foreground sm:text-base">Cash, M-Pesa and trust — SokoWise keeps track of all three.</p>
+            </div>
+          </div>
         </Section>
 
         {/* How it works */}
@@ -197,23 +209,23 @@ export default function HomePage() {
 
         {/* Product preview */}
         <Section tone="card">
-          <div className="grid items-center gap-10 lg:grid-cols-[6fr_5fr] lg:gap-16">
-            <div className="grid grid-cols-2 gap-4 sm:gap-6">
+          <div className="grid items-center gap-10 lg:grid-cols-[7fr_4fr] lg:gap-16">
+            <div className="grid grid-cols-[1fr_auto] items-end gap-4 sm:gap-6">
               <figure className="min-w-0">
+                <div className="overflow-hidden rounded-xl border border-border bg-background shadow-md">
+                  <img src="/marketing/dashboard.webp" width={1280} height={800} loading="lazy" alt="The SokoWise dashboard for Karibu Mini Mart, an example business: revenue, cash collected, what customers owe, gross profit, expenses and net profit for the month, with low-stock products and top debtors." className="block h-auto w-full" />
+                </div>
+                <figcaption className="mt-2 text-center text-xs text-muted-foreground">The owner's dashboard, shown with example data.</figcaption>
+              </figure>
+              <figure className="w-28 sm:w-40">
                 <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-md">
                   <img src="/marketing/sell-phone.webp" width={780} height={1560} loading="lazy" alt="Taking payment for a KSh 280 sale on a phone: KSh 200 by M-Pesa with the code noted for the records, KSh 80 in cash, marked fully paid." className="block h-auto w-full" />
                 </div>
                 <figcaption className="mt-2 text-center text-xs text-muted-foreground">Recording a sale</figcaption>
               </figure>
-              <figure className="min-w-0">
-                <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-md">
-                  <img src="/marketing/dashboard-phone.webp" width={780} height={1560} loading="lazy" alt="The dashboard on a phone: today's revenue, cash collected and what customers owe, with products running low." className="block h-auto w-full" />
-                </div>
-                <figcaption className="mt-2 text-center text-xs text-muted-foreground">Today at a glance</figcaption>
-              </figure>
             </div>
             <div>
-              <SectionHeading eyebrow="The real thing" title="This is the actual SokoWise, on a phone." lead="What you see here is the app itself with example data — the same screens you get after signing up." />
+              <SectionHeading eyebrow="The real thing" title="This is the actual SokoWise." lead="What you see here is the app itself with example data — the same screens you get after signing up, on a phone or a laptop." />
               <ul className="space-y-3 text-sm text-muted-foreground sm:text-base">
                 <li>Tap products to build the sale; the total and change are worked out for you.</li>
                 <li>Choose cash, M-Pesa or credit — or split between them.</li>
@@ -241,15 +253,19 @@ export default function HomePage() {
         </Section>
 
         {/* Final CTA */}
-        <Section tone="dark">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Ready to understand your business better?</h2>
-            <p className="mt-3 text-base text-secondary-foreground/80 sm:text-lg">Start keeping your sales, stock, customers and expenses in one place. It takes a few minutes to set up.</p>
-            <div className="mt-8 flex justify-center">
-              <CtaButtons large invert />
+        <section className="relative isolate overflow-hidden bg-secondary py-16 text-secondary-foreground sm:py-24">
+          <img src="/marketing/market-1600.webp" srcSet="/marketing/market-1000.webp 1000w, /marketing/market-1600.webp 1600w" sizes="100vw" width={1600} height={900} loading="lazy" alt="" aria-hidden="true" className="absolute inset-0 -z-20 h-full w-full object-cover opacity-40" />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-b from-secondary/55 via-secondary/70 to-secondary/95" aria-hidden="true" />
+          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+            <div className="mx-auto max-w-2xl text-center">
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Ready to understand your business better?</h2>
+              <p className="mt-3 text-base text-secondary-foreground/80 sm:text-lg">Start keeping your sales, stock, customers and expenses in one place. It takes a few minutes to set up.</p>
+              <div className="mt-8 flex justify-center">
+                <CtaButtons large invert />
+              </div>
             </div>
           </div>
-        </Section>
+        </section>
       </main>
 
       <footer className="border-t border-border bg-card">
@@ -273,7 +289,7 @@ export default function HomePage() {
           </nav>
         </div>
         <div className="border-t border-border">
-          <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs text-muted-foreground sm:px-6">© {new Date().getFullYear()} SokoWise. Kenya.</p>
+          <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs text-muted-foreground sm:px-6">© {new Date().getFullYear()} SokoWise. Kenya. · Photos via <a href="https://unsplash.com/license" className="underline hover:text-foreground">Unsplash</a>.</p>
         </div>
       </footer>
     </div>
@@ -283,9 +299,9 @@ export default function HomePage() {
 /** A small, clearly labelled example of one sale, built from the app's own components. */
 function ExampleSaleCard() {
   const rows = [
-    ['Sugar 1kg × 2', '320'],
-    ['Milk 500ml × 3', '180'],
-    ['Bar soap × 1', '140'],
+    ['Sukari 1kg × 2', '320'],
+    ['Maziwa 500ml × 3', '180'],
+    ['Sabuni ya bar × 1', '140'],
   ] as const
   return (
     <figure className="mx-auto w-full max-w-sm">
