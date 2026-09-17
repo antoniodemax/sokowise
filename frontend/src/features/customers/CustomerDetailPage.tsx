@@ -1,7 +1,8 @@
-import { ArrowLeft, HandCoins, SlidersHorizontal } from 'lucide-react'
+import { HandCoins, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 
+import { BackLink } from '@/components/ui/back-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,7 +38,7 @@ export default function CustomerDetailPage() {
 
   return (
     <>
-      <Link to="/customers" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" aria-hidden="true" /> All customers</Link>
+      <BackLink to="/customers">All customers</BackLink>
       <PageHeader
         title={c.name}
         description={[c.phone, c.is_active ? null : 'archived'].filter(Boolean).join(' · ') || 'No phone number'}

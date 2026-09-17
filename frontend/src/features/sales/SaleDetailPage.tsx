@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Ban } from 'lucide-react'
+import { Ban } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 
 import { Alert } from '@/components/ui/alert'
+import { BackLink } from '@/components/ui/back-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -56,7 +57,7 @@ export default function SaleDetailPage() {
 
   return (
     <>
-      <Link to="/sales" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" aria-hidden="true" /> All sales</Link>
+      <BackLink to="/sales">All sales</BackLink>
       <PageHeader
         title={<span className="flex flex-wrap items-center gap-2">Sale {voided ? <Badge variant="destructive">Voided</Badge> : <Badge variant="success">Completed</Badge>}</span>}
         description={formatDateTime(s.sold_at, tz)}

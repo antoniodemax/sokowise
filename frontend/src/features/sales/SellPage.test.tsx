@@ -18,6 +18,7 @@ describe('SellPage', () => {
       'POST /api/v1/sales': () => (++attempts === 1 ? apiError(500, 'INTERNAL', 'boom') : json(sale(), 201)),
     })
     renderWithProviders(<SellPage />, { path: '/sales/new', pattern: '/sales/new' })
+    expect(screen.getByRole('link', { name: 'Back to sales' })).toHaveAttribute('href', '/sales')
     await userEvent.click(await screen.findByRole('button', { name: /Bread/ }))
     await userEvent.click(screen.getByRole('button', { name: 'More Bread' }))
     expect(screen.getByLabelText('Amount (KSh)')).toHaveValue('110.00')

@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, ArchiveRestore, ArrowLeft, Pencil } from 'lucide-react'
+import { Archive, ArchiveRestore, Pencil } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 
+import { BackLink } from '@/components/ui/back-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button-variants'
@@ -53,7 +54,7 @@ export default function ProductDetailPage() {
 
   return (
     <>
-      <Link to="/products" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" aria-hidden="true" /> All products</Link>
+      <BackLink to="/products">All products</BackLink>
       <PageHeader
         title={p.name}
         description={[category, p.sku, p.unit].filter(Boolean).join(' · ')}

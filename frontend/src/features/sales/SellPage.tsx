@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 
 import { Alert } from '@/components/ui/alert'
+import { BackLink } from '@/components/ui/back-link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -120,6 +121,7 @@ export default function SellPage() {
 
   return (
     <>
+      <BackLink to="/sales">Back to sales</BackLink>
       <PageHeader title="New sale" description="Add items, take payment, done." />
       <form onSubmit={(e) => { e.preventDefault(); if (canSubmit && !mutation.isPending) submit() }} noValidate className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <div className="space-y-4">

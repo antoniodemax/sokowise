@@ -1,6 +1,6 @@
 import { LogOut, Menu, ShieldCheck, UserRound } from 'lucide-react'
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 
 import { BrandMark } from '@/components/brand'
 import { Badge } from '@/components/ui/badge'
@@ -43,17 +43,18 @@ function NavLinks({ role, onNavigate }: { role: 'OWNER' | 'STAFF'; onNavigate?: 
   )
 }
 
-function BusinessIdentity({ name, role }: { name: string; role: 'OWNER' | 'STAFF' }) {
+/** The mark and business name; clicking it goes home to the dashboard. */
+function BusinessIdentity({ name, role, onNavigate }: { name: string; role: 'OWNER' | 'STAFF'; onNavigate?: () => void }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-4">
+    <Link to="/dashboard" aria-label="Go to the dashboard" onClick={onNavigate} className="mx-2 my-2 flex min-h-11 items-center gap-3 rounded-md px-1 py-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
       <BrandMark size={40} />
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold leading-tight">{name}</p>
-        <p className="text-xs text-muted-foreground">
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold leading-tight">{name}</span>
+        <span className="block text-xs text-muted-foreground">
           SokoWise · {role === 'OWNER' ? 'Owner' : 'Staff'}
-        </p>
-      </div>
-    </div>
+        </span>
+      </span>
+    </Link>
   )
 }
 
@@ -138,14 +139,16 @@ export function AppShell() {
         <Button variant="ghost" size="icon" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
           <Menu className="size-6" aria-hidden="true" />
         </Button>
-        <BrandMark size={32} />
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{business.name}</p>
+        <Link to="/dashboard" aria-label="Go to the dashboard" className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <BrandMark size={32} />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{business.name}</span>
+        </Link>
       </header>
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetContent aria-describedby={undefined}>
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <SheetDescription className="sr-only">Move between SokoWise sections</SheetDescription>
-          <BusinessIdentity name={business.name} role={role} />
+          <BusinessIdentity name={business.name} role={role} onNavigate={() => setMenuOpen(false)} />
           <div className="flex-1 overflow-y-auto px-3">
             <NavLinks role={role} onNavigate={() => setMenuOpen(false)} />
           </div>
