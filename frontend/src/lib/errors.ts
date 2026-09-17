@@ -14,7 +14,9 @@ export function describeError(error: unknown): string {
           ? 'This business is inactive. Contact SokoWise support.'
           : error.code === 'PASSWORD_CHANGE_REQUIRED'
             ? 'Please change your password to continue.'
-            : 'You do not have permission to do this.'
+            : error.code === 'CSRF_REJECTED'
+              ? 'The server did not accept this request from this address. Check that the app origin is allowed (CORS_ORIGINS) and reload.'
+              : 'You do not have permission to do this.'
       case 404:
         return 'Not found.'
       case 409:

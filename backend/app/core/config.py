@@ -53,10 +53,21 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_cors_origins(cls, value: object) -> object:
-        """Accept a comma-separated string (as set in .env) as well as a list."""
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+        """Accept a comma-separated string (as set in .env) as well as a list.
+
+        Entries are normalised to what a browser actually sends in `Origin`
+        (`scheme://host[:port]`): surrounding whitespace and a trailing slash are dropped,
+        because `http://localhost:5173/` in .env would otherwise silently fail the exact
+        Origin comparison in `require_trusted_origin` and lock every browser out of login.
+        """
+        items = value.split(",") if isinstance(value, str) else value
+        if not isinstance(items, list | tuple):
+            return value
+        return [cls._normalise_origin(item) for item in items if str(item).strip()]
+
+    @staticmethod
+    def _normalise_origin(origin: object) -> str:
+        return str(origin).strip().rstrip("/")
 
     @field_validator("cors_origin_regex", "cookie_domain", "jwt_issuer", "jwt_audience")
     @classmethod

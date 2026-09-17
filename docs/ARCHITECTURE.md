@@ -400,7 +400,7 @@ Configuration comes from environment variables loaded by `pydantic-settings`; th
 | `JWT_ISSUER`, `JWT_AUDIENCE` | no (unset) | when set, added to and verified on every access token |
 | `ACCESS_TOKEN_TTL_MINUTES` | no (15) | 1–60 |
 | `REFRESH_TOKEN_TTL_DAYS` | no (30) | 1–90 |
-| `CORS_ORIGINS` | yes | comma-separated frontend origins; also the CSRF Origin allow-list |
+| `CORS_ORIGINS` | yes | comma-separated frontend origins in browser `Origin` form (`scheme://host[:port]`, no trailing slash — whitespace and a trailing slash are stripped on load); also the CSRF Origin allow-list |
 | `CORS_ORIGIN_REGEX` | no | regex for origins that cannot be listed (Vercel previews); preview API environment only |
 | `COOKIE_DOMAIN` | no | refresh cookie `Domain`; host-only when unset |
 | `COOKIE_SECURE` | no (true) | must be true in production (enforced); `false` only for local http |

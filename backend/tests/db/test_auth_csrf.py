@@ -87,6 +87,30 @@ async def test_get_requests_carry_no_cookie_and_change_nothing(api: AsyncClient)
     assert refresh_cookie(api) is not None
 
 
+async def test_dev_origin_configured_with_a_trailing_slash_still_passes_the_origin_check(
+    api_factory: ApiFactory,
+) -> None:
+    """Regression: `CORS_ORIGINS=http://localhost:5173/` (trailing slash) made every browser
+    auth POST a 403 CSRF_REJECTED, because browsers send `Origin: http://localhost:5173`.
+    The guard itself is unchanged; the configured value is normalised."""
+    api = await api_factory(cors_origins=["http://localhost:5173/"])
+    browser_origin = {"Origin": "http://localhost:5173"}
+    # Login: past the origin check → the credential outcome (401), never 403.
+    login = await api.post(
+        LOGIN_URL,
+        json={"identifier": "nobody@example.test", "password": "x"},
+        headers=browser_origin,
+    )
+    assert login.status_code == HTTPStatus.UNAUTHORIZED, login.text
+    assert error_code(login) == "INVALID_CREDENTIALS"
+    # Refresh without a cookie: past the origin and header checks → 401, never 403.
+    refresh = await api.post(REFRESH_URL, headers={**CSRF_HEADERS, **browser_origin})
+    assert refresh.status_code == HTTPStatus.UNAUTHORIZED, refresh.text
+    # Foreign origins are still rejected: normalisation widened nothing.
+    evil = await api.post(REFRESH_URL, headers={**CSRF_HEADERS, "Origin": EVIL_ORIGIN})
+    assert evil.status_code == HTTPStatus.FORBIDDEN and error_code(evil) == "CSRF_REJECTED"
+
+
 async def test_preview_origins_can_be_allowed_by_regex(api_factory: ApiFactory) -> None:
     api = await api_factory(cors_origin_regex=r"https://sokowise-[a-z0-9-]+\.vercel\.app")
     await register(api)

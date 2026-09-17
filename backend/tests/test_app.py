@@ -41,6 +41,15 @@ def test_settings_split_comma_separated_cors_origins(monkeypatch: pytest.MonkeyP
     assert Settings().cors_origins == ["http://a.test", "http://b.test"]
 
 
+def test_cors_origins_are_normalised_to_browser_origin_form(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A trailing slash or stray whitespace in .env must not lock browsers out of login:
+    `Origin` is always `scheme://host[:port]`, and the CSRF guard compares it exactly."""
+    monkeypatch.setenv("CORS_ORIGINS", " http://localhost:5173/ ,https://app.example.com/,")
+    assert Settings().cors_origins == ["http://localhost:5173", "https://app.example.com"]
+
+
 def test_production_settings_disable_interactive_docs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     prod_app = create_app(Settings())

@@ -45,6 +45,15 @@ describe('LoginPage', () => {
     await waitFor(() => expect(value.login).toHaveBeenCalledWith({ identifier: '0712 345 678', password: 'correct horse' }))
   })
 
+  it('explains a rejected origin instead of a generic permission error', async () => {
+    const login = vi.fn().mockRejectedValueOnce(new ApiError(403, 'CSRF_REJECTED', 'Request origin is not allowed'))
+    renderLogin({ login })
+    await userEvent.type(screen.getByLabelText('Phone number or email'), '0712345678')
+    await userEvent.type(screen.getByLabelText('Password'), 'correct horse')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/app origin is allowed \(CORS_ORIGINS\)/)
+  })
+
   it('shows the backend message for bad credentials and a friendly one for rate limits', async () => {
     const login = vi
       .fn()
