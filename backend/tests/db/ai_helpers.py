@@ -2,7 +2,7 @@
 
 import copy
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from app.ai.provider import ProviderResponse, ToolCall, Usage
@@ -40,7 +40,7 @@ def tool_response(name: str, input: dict[str, Any], *, call_id: str = "tu_1") ->
 class FakeProvider:
     """Plays a script of responses and records every request it received."""
 
-    def __init__(self, script: list[Step]) -> None:
+    def __init__(self, script: Sequence[Step]) -> None:
         self.script = list(script)
         self.requests: list[dict[str, Any]] = []
 

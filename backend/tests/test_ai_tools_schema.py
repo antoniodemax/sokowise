@@ -62,7 +62,7 @@ def test_tool_inputs_reject_unknown_fields_and_oversized_limits() -> None:
         "search_customers",
     ):
         try:
-            payload = {"limit": 10_000}
+            payload: dict[str, object] = {"limit": 10_000}
             if name == "get_product_performance":
                 payload.update(
                     {"period": "today", "date_from": None, "date_to": None, "sort": "revenue"}

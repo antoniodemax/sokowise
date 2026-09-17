@@ -3,7 +3,7 @@
 from typing import Any
 
 import anthropic
-import httpx
+import httpx2  # the SDK types its exceptions against its vendored httpx
 import pytest
 from anthropic.types import Message, TextBlock, ToolUseBlock, Usage
 from app.ai.errors import AIUnavailableError
@@ -61,7 +61,7 @@ def test_parse_message_flags_unsupported_blocks() -> None:
         _message(
             content=[{"type": "server_tool_use", "id": "x", "name": "web_search", "input": {}}]
         )
-    )  # type: ignore[list-item]
+    )
     assert parsed.unsupported_blocks == ["server_tool_use"]
     assert parsed.text == ""
 
@@ -86,25 +86,25 @@ async def _complete(provider: AnthropicProvider) -> None:
 async def test_timeout_rate_limit_connection_and_status_errors_become_safe_503s(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     cases = [
         (anthropic.APITimeoutError(request), "AI_TIMEOUT"),
         (
             anthropic.RateLimitError(
-                "slow down", response=httpx.Response(429, request=request), body=None
+                "slow down", response=httpx2.Response(429, request=request), body=None
             ),
             "AI_PROVIDER_BUSY",
         ),
         (anthropic.APIConnectionError(request=request), "AI_UNAVAILABLE"),
         (
             anthropic.AuthenticationError(
-                "bad key sk-ant-secret", response=httpx.Response(401, request=request), body=None
+                "bad key sk-ant-secret", response=httpx2.Response(401, request=request), body=None
             ),
             "AI_UNAVAILABLE",
         ),
         (
             anthropic.InternalServerError(
-                "boom", response=httpx.Response(500, request=request), body=None
+                "boom", response=httpx2.Response(500, request=request), body=None
             ),
             "AI_UNAVAILABLE",
         ),

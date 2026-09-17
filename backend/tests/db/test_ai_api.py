@@ -230,9 +230,8 @@ async def test_ask_runs_the_tool_against_real_data_and_persists_both_messages(
         and assistant.output_tokens == 50
         and assistant.cache_read_tokens == 90
     )
-    assert assistant.tool_calls is not None and assistant.tool_calls[0][
-        "output_summary"
-    ].startswith("{")
+    assert assistant.tool_calls is not None
+    assert str(assistant.tool_calls[0]["output_summary"]).startswith("{")
     conversation = await db_session.get(AIConversation, uuid.UUID(conversation_id))
     assert conversation is not None and conversation.title == "How much did I make today?"
 
