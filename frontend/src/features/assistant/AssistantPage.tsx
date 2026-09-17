@@ -84,9 +84,12 @@ export default function AssistantPage() {
       return assistantApi.ask(id, content)
     },
     onMutate: (content) => setPending(content),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setPending(null)
       setDraft('')
+      // A GET for a freshly created conversation may still be in flight; drop it so its
+      // empty message list cannot overwrite the answer written below.
+      await queryClient.cancelQueries({ queryKey: assistantKeys.conversation(result.conversation_id) })
       queryClient.setQueryData<ConversationDetail>(assistantKeys.conversation(result.conversation_id), (current) => ({
         id: result.conversation_id,
         title: current?.title ?? result.user_message.content.slice(0, 120),
