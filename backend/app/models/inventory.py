@@ -39,6 +39,8 @@ class InventoryMovement(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         CheckConstraint("quantity_after >= 0", name="quantity_after_non_negative"),
         Index(None, "business_id", "product_id", "occurred_at"),
         Index(None, "business_id", "product_id", "created_at"),
+        # The movements screen: newest first for the whole business (scanned backwards).
+        Index(None, "business_id", "created_at", "id"),
         Index(None, "sale_id"),
         Index(None, "created_by"),
     )

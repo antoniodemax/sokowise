@@ -432,21 +432,25 @@ class SlowProduct:
 async def slow_products(
     session: AsyncSession, business_id: uuid.UUID, *, since: datetime, limit: int
 ) -> list[SlowProduct]:
-    """FR-I3: active, tracked products with stock on hand and no COMPLETED sale since `since`."""
-    last_sold = (
-        select(func.max(Sale.sold_at))
+    """FR-I3: active, tracked products with stock on hand and no COMPLETED sale since `since`.
+
+    The last sale date is computed once per product in a derived table (one pass over the
+    tenant's sale lines) and outer-joined; a correlated subquery here was evaluated three
+    times per product, each a full scan of `sales`, and took seconds on a 40k-sale tenant.
+    """
+    last_sales = (
+        select(SaleItem.product_id.label("product_id"), func.max(Sale.sold_at).label("last"))
         .select_from(SaleItem)
         .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(
-            SaleItem.product_id == Product.id,
-            SaleItem.business_id == business_id,
-            Sale.status == SaleStatus.COMPLETED,
-        )
-        .correlate(Product)
-        .scalar_subquery()
+        .where(SaleItem.business_id == business_id, Sale.status == SaleStatus.COMPLETED)
+        .group_by(SaleItem.product_id)
+        .subquery("last_sales")
     )
+    last_sold = last_sales.c.last
     stmt = (
         select(Product.id, Product.name, Product.stock_quantity, last_sold.label("last_sold_at"))
+        .select_from(Product)
+        .outerjoin(last_sales, last_sales.c.product_id == Product.id)
         .where(
             Product.business_id == business_id,
             Product.is_active.is_(True),

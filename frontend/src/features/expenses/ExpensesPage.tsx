@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
+import { When } from '@/components/ui/when'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -15,7 +16,7 @@ import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth-context'
-import { formatDateTime, localDate } from '@/lib/dates'
+import { localDate } from '@/lib/dates'
 import { fromCents, toCents } from '@/lib/decimal'
 import { describeError } from '@/lib/errors'
 import { formatKsh } from '@/lib/money'
@@ -100,11 +101,11 @@ export default function ExpensesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>When</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead className="hidden sm:table-cell">Category</TableHead>
                 <TableHead className="hidden md:table-cell">Note</TableHead>
                 <TableHead className="hidden sm:table-cell">Paid by</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
+                <TableHead className="w-20 sm:w-24"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -112,8 +113,12 @@ export default function ExpensesPage() {
                 const deleted = !!expense.deleted_at
                 return (
                   <TableRow key={expense.id} className={deleted ? 'opacity-60' : undefined}>
-                    <TableCell className="whitespace-nowrap">{formatDateTime(expense.incurred_at, tz)}{deleted && <Badge variant="destructive" className="ml-2">Deleted</Badge>}</TableCell>
-                    <TableCell className="font-medium">{expense.category}</TableCell>
+                    <TableCell>
+                      <When iso={expense.incurred_at} timeZone={tz} />
+                      <span className="block text-sm font-medium sm:hidden">{expense.category}</span>
+                      {deleted && <Badge variant="destructive" className="ml-2 align-top">Deleted</Badge>}
+                    </TableCell>
+                    <TableCell className="hidden font-medium sm:table-cell">{expense.category}</TableCell>
                     <TableCell className="hidden max-w-64 truncate text-muted-foreground md:table-cell">{[expense.note, expense.reference].filter(Boolean).join(' · ') || '—'}</TableCell>
                     <TableCell className="hidden sm:table-cell">{expense.payment_method === 'MPESA' ? 'M-Pesa' : 'Cash'}</TableCell>
                     <TableCell className={`tabular text-right font-semibold ${deleted ? 'line-through' : ''}`}>{formatKsh(expense.amount)}</TableCell>

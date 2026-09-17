@@ -48,7 +48,7 @@ export default function ProductDetailPage() {
   })
 
   if (product.isPending) return <div className="space-y-4"><Skeleton className="h-8 w-64" /><Skeleton className="h-40" /></div>
-  if (product.isError) return <ErrorState error={product.error} title="Could not load this product" onRetry={() => product.refetch()} />
+  if (product.isError) return <><BackLink to="/products">All products</BackLink><ErrorState error={product.error} title="Could not load this product" onRetry={() => product.refetch()} /></>
   const p = product.data
   const category = p.category_id ? categories.data?.find((c) => c.id === p.category_id)?.name : null
 

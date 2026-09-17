@@ -38,7 +38,18 @@ export class ApiError extends Error {
   static network(): ApiError {
     return new ApiError(0, 'NETWORK_ERROR', 'Could not reach SokoWise. Check your connection and try again.')
   }
+
+  static timeout(): ApiError {
+    return new ApiError(0, 'TIMEOUT', 'SokoWise is taking too long to respond. Check your connection and try again.')
+  }
+
+  static badResponse(status: number): ApiError {
+    return new ApiError(status, 'BAD_RESPONSE', 'The server sent an unexpected reply. Please try again.')
+  }
 }
+
+/** Default per-request deadline; a hung connection must never leave a screen spinning forever. */
+export const DEFAULT_TIMEOUT_MS = 20_000
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -50,6 +61,33 @@ export interface RequestOptions {
   headers?: Record<string, string>
   query?: Record<string, string | number | boolean | null | undefined>
   signal?: AbortSignal
+  /** Deadline for this call (default DEFAULT_TIMEOUT_MS); longer for AI and receipt reads. */
+  timeoutMs?: number
+}
+
+/**
+ * A signal that aborts after `timeoutMs` (reason: TimeoutError) or when `signal` aborts.
+ * Built by hand rather than with AbortSignal.timeout/any so it behaves the same in every
+ * browser the pilot may use; `release()` stops the timer once the response has arrived.
+ */
+export function withDeadline(signal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; release: () => void; timedOut: () => boolean } {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort(new DOMException('Request timed out', 'TimeoutError'))
+  }, timeoutMs)
+  const forward = () => controller.abort(signal?.reason as unknown)
+  if (signal?.aborted) forward()
+  else signal?.addEventListener('abort', forward, { once: true })
+  return {
+    signal: controller.signal,
+    release: () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', forward)
+    },
+    timedOut: () => timedOut,
+  }
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -78,22 +116,32 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   if (options.csrf) headers[CSRF_HEADER] = CSRF_VALUE
   const token = sessionStore.getToken()
   if (options.auth !== false && token) headers.Authorization = `Bearer ${token}`
+  const deadline = withDeadline(options.signal, options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
   try {
     return await fetch(buildUrl(path, options.query), {
       method: options.method ?? 'GET',
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       credentials: 'include',
-      signal: options.signal,
+      signal: deadline.signal,
     })
-  } catch {
+  } catch (error) {
+    if (options.signal?.aborted) throw error // the caller cancelled; not a failure to report
+    if (deadline.timedOut()) throw ApiError.timeout()
     throw ApiError.network()
+  } finally {
+    deadline.release()
   }
 }
 
 async function parse<T>(response: Response): Promise<T> {
   if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  try {
+    return (await response.json()) as T
+  } catch {
+    // A proxy serving HTML for /api (misrouted deploy) must not surface a JSON parser message.
+    throw ApiError.badResponse(response.status)
+  }
 }
 
 /** Perform a request; on 401 with a session, refresh once (single-flight) and retry. */
@@ -101,10 +149,21 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   let response = await send(path, options)
   if (response.status === 401 && options.auth !== false && path !== REFRESH_PATH) {
     const refreshed = await refreshSession()
-    if (refreshed === null) throw await toApiError(response)
+    if (refreshed === null) {
+      // A refused refresh clears the session; if one survives, the refresh itself failed
+      // to reach the server, and that is what the user should be told.
+      throw sessionStore.get() ? ApiError.network() : await toApiError(response)
+    }
     response = await send(path, options)
   }
-  if (!response.ok) throw await toApiError(response)
+  if (!response.ok) {
+    const error = await toApiError(response)
+    if (error.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED' && options.auth !== false) {
+      // Re-adopt the session so `must_change_password` is current and RequireAuth redirects.
+      await refreshSession()
+    }
+    throw error
+  }
   return parse<T>(response)
 }
 

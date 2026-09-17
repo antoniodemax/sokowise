@@ -17,6 +17,9 @@ async def add(session: AsyncSession, entry: AuditLog) -> AuditLog:
     return entry
 
 
+MAX_LIST_LIMIT = 500
+
+
 async def list_for_business(
     session: AsyncSession, business_id: uuid.UUID, *, limit: int = 100
 ) -> list[AuditLog]:
@@ -24,6 +27,6 @@ async def list_for_business(
         select(AuditLog)
         .where(AuditLog.business_id == business_id)
         .order_by(AuditLog.created_at.desc(), AuditLog.id)
-        .limit(limit)
+        .limit(min(limit, MAX_LIST_LIMIT))
     )
     return list(result)

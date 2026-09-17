@@ -18,6 +18,7 @@ describe('CustomersPage', () => {
     expect(await screen.findByText('Brian Otieno')).toBeInTheDocument()
     expect(screen.getByText('Owes KSh 100')).toBeInTheDocument()
     expect(screen.getByText('Nothing owed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: 'Who owes you' }))
     expect(await screen.findByLabelText('Sort debtors')).toBeInTheDocument()

@@ -51,7 +51,7 @@ export default function SaleDetailPage() {
   })
 
   if (sale.isPending) return <div className="space-y-4"><Skeleton className="h-8 w-64" /><Skeleton className="h-40" /></div>
-  if (sale.isError) return <ErrorState error={sale.error} title="Could not load this sale" onRetry={() => sale.refetch()} />
+  if (sale.isError) return <><BackLink to="/sales">All sales</BackLink><ErrorState error={sale.error} title="Could not load this sale" onRetry={() => sale.refetch()} /></>
   const s = sale.data
   const voided = s.status === 'VOIDED'
 

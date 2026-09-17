@@ -1,5 +1,6 @@
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
+import { ApiError } from '@/lib/api'
 import { describeError } from '@/lib/errors'
 
 import { Button } from './button'
@@ -18,7 +19,7 @@ export function ErrorState({ error, title = 'Something went wrong', onRetry }: E
       </div>
       <h3 className="text-base font-semibold">{title}</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">{describeError(error)}</p>
-      {onRetry && (
+      {onRetry && !(error instanceof ApiError && error.status === 404) && (
         <Button variant="outline" className="mt-5" onClick={onRetry}>
           <RefreshCw aria-hidden="true" /> Try again
         </Button>

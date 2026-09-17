@@ -23,7 +23,13 @@ COPY --from=builder --chown=app:app /app/app /app/app
 # Migrations ship with the image so `alembic upgrade head` can run as a release step.
 COPY --from=builder --chown=app:app /app/alembic.ini /app/alembic.ini
 COPY --from=builder --chown=app:app /app/alembic /app/alembic
+# Default receipt blob root for single-host/compose use. Production must point
+# RECEIPT_STORAGE_DIR at a mounted volume (docs/OPERATIONS.md); the container disk is ephemeral.
+RUN mkdir -p /app/var/receipts && chown -R app:app /app/var
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 API_HOST=0.0.0.0 API_PORT=8000
+# Behind a platform proxy (Railway) set FORWARDED_ALLOW_IPS="*" in the service environment so
+# uvicorn takes the client address from X-Forwarded-For; the per-IP rate limits and audit
+# `ip` column depend on it. Left unset here because compose publishes the port directly.
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

@@ -125,12 +125,13 @@ async def test_business_names_need_not_be_unique(api: AsyncClient) -> None:
 
 
 async def test_client_cannot_choose_a_role(api: AsyncClient, db_session: AsyncSession) -> None:
+    users_before = await db_session.scalar(select(func.count()).select_from(User))
     response = await api.post(REGISTER_URL, json=register_payload(role="STAFF"))
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert error_code(response) == "VALIDATION_ERROR"
     assert any(d["loc"][-1] == "role" for d in response.json()["error"]["details"])
-    # Nothing was created.
-    assert await db_session.scalar(select(func.count()).select_from(User)) == 0
+    # Nothing was created (counted relative to whatever the test database already holds).
+    assert await db_session.scalar(select(func.count()).select_from(User)) == users_before
 
 
 async def test_email_is_optional(api: AsyncClient) -> None:

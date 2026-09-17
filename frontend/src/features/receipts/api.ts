@@ -72,9 +72,10 @@ export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 export const receiptsApi = {
   list: (signal?: AbortSignal) => request<ReceiptSummary[]>('/api/v1/receipts', { signal }),
   get: (id: string, signal?: AbortSignal) => request<Receipt>(`/api/v1/receipts/${id}`, { signal }),
-  process: (id: string) => request<Receipt>(`/api/v1/receipts/${id}/process`, { method: 'POST' }),
+  // The model call can legitimately take a while; the server's own timeout is the real bound.
+  process: (id: string) => request<Receipt>(`/api/v1/receipts/${id}/process`, { method: 'POST', timeoutMs: 120_000 }),
   confirm: (id: string, body: { lines: ConfirmLine[]; supplier_name?: string | null; reason?: string | null }) =>
-    request<ConfirmResult>(`/api/v1/receipts/${id}/confirm`, { method: 'POST', body }),
+    request<ConfirmResult>(`/api/v1/receipts/${id}/confirm`, { method: 'POST', body, timeoutMs: 60_000 }),
   cancel: (id: string) => request<Receipt>(`/api/v1/receipts/${id}/cancel`, { method: 'POST' }),
   /** Multipart upload; the shared client only speaks JSON, so this is the one hand-rolled fetch. */
   upload: async (file: File): Promise<Receipt> => {

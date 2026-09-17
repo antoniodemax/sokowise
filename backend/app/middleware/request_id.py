@@ -16,6 +16,7 @@ import re
 import time
 import uuid
 
+import sentry_sdk
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -46,6 +47,7 @@ class RequestIDMiddleware:
 
         request_id = resolve_request_id(Headers(scope=scope).get(REQUEST_ID_HEADER))
         token = request_id_var.set(request_id)
+        sentry_sdk.set_tag("request_id", request_id)  # no-op unless Sentry is initialised
         started = time.perf_counter()
         status_code = 0
         response_started = False

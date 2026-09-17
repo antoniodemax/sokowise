@@ -1,4 +1,5 @@
 import { request } from '@/lib/api'
+import { fetchCsv } from '@/lib/download'
 
 export interface Customer {
   id: string
@@ -54,6 +55,8 @@ export interface Debtor {
 export type CustomerListParams = { q?: string; include_archived?: boolean; limit?: number }
 
 export const customersApi = {
+  /** OWNER only: every customer with balance and credit limit (PRD NFR-12). */
+  exportCsv: (): Promise<Blob> => fetchCsv('/api/v1/customers/export.csv', {}, 'Could not export customers.'),
   list: (params: CustomerListParams, signal?: AbortSignal) => request<Customer[]>('/api/v1/customers', { query: params, signal }),
   get: (id: string, signal?: AbortSignal) => request<Customer>(`/api/v1/customers/${id}`, { signal }),
   create: (body: CustomerCreate) => request<Customer>('/api/v1/customers', { method: 'POST', body }),

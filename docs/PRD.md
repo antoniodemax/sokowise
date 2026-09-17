@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.2 — Phase 0 (product discovery; architecture review fixes A–M applied) |
+| Status | v0.3 — synchronised with the implemented product after Phase 14 (supplier receipts) and the Phase 15 production-hardening audit; §21 states what is IMPLEMENTED, PLANNED and what REQUIRES EXTERNAL CONFIGURATION |
 | Owner | Product / Engineering |
-| Last updated | 2026-09-16 |
+| Last updated | 2026-09-17 |
 | Related docs | [DATA_MAPPING.md](DATA_MAPPING.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ROADMAP.md](ROADMAP.md) |
 
 > This document is the product source of truth. If code and this document disagree, one of them is wrong — fix the disagreement, do not work around it. Items marked **ASSUMPTION** must be validated with real business owners during the pilot (see §19 and ROADMAP Phase 17).
@@ -117,7 +117,7 @@ The MVP is the smallest product a real duka could run on for a month.
 | 10 | Analytics (today/this week/this month: revenue, COGS, gross profit, expenses, net; top products; slow products; low stock; debtors; expenses by category) | Yes |
 | 11 | AI copilot (chat over the owner's own data via backend-controlled tools, read-only) | Yes |
 | 12 | Audit log of financial and inventory mutations | Yes (backend), minimal UI |
-| 13 | Receipt intelligence (paste M-Pesa SMS / photograph supplier receipt → draft expense or restock for confirmation) | Stretch — Roadmap Phase 10, ships only if Phases 1–9 are stable |
+| 13 | Supplier receipt intelligence (photograph a supplier receipt → AI-drafted restock that the owner reviews and confirms; FR-L) | Yes — implemented as ROADMAP "Phase 14". The M-Pesa-SMS-to-expense half of the original idea is **not** built (§10) |
 
 Everything else is §10.
 
@@ -128,7 +128,8 @@ Ordered by expected value; not committed.
 1. M-Pesa Daraja integration (STK push, C2B confirmation) — payments confirmed automatically.
 2. WhatsApp sharing of receipts and daily summaries; later, a WhatsApp interface to the copilot.
 3. Offline-first sale recording with background sync.
-4. Suppliers and purchase records (accounts payable, supplier history).
+4. Suppliers and purchase records (accounts payable, supplier history). Receipt scanning (FR-L) records the supplier name on the receipt only; there is no supplier entity.
+4b. Paste an M-Pesa SMS to draft an expense (the other half of the original receipt-intelligence idea, US-18).
 5. Swahili UI.
 6. Multi-branch businesses.
 7. Customer statements and reminders (SMS/WhatsApp) for outstanding credit.
@@ -223,6 +224,17 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-J6. Per-business daily usage limits and a global cost cap are enforced.
 - FR-J7. AI output never modifies records in MVP. Post-MVP, AI may *propose* actions that require explicit user confirmation and pass normal validation.
 - FR-J8. If the AI service is unavailable, the rest of the app keeps working.
+- FR-J9 (as built). Answers are returned whole, not streamed (AI-9 is not met yet; see §21). Global spend cap alerts (AI-8) are not enforced in code.
+
+### FR-L Supplier receipt intelligence (implemented 2026-09-17, ROADMAP "Phase 14")
+- FR-L1. OWNER uploads a photo of a supplier receipt (JPEG, PNG or WebP, ≤ 8 MB by default, ≥ 200 px on the short side, ≤ 25 megapixels). The file is sniffed by magic bytes and decoded with Pillow before it is stored; anything else is rejected (`RECEIPT_IMAGE_INVALID`, `RECEIPT_TOO_LARGE`). STAFF cannot use any receipt endpoint.
+- FR-L2. The image is stored privately under a server-generated key in the business's namespace and is only ever served back to an OWNER of that business, with `Cache-Control: private, no-store`. Cross-tenant access is a 404.
+- FR-L3. "Read receipt" sends the image to the extraction provider (Anthropic Claude, forced structured tool call) which proposes supplier, receipt number, date, currency, totals and up to 60 lines (name, SKU, quantity, unit cost, line total, confidence). The proposal is validated (shape, bounds, arithmetic) and stored as an **untrusted draft**; warnings are attached per line (`line_total_mismatch`, `zero_unit_cost`, `low_confidence`) and per receipt (`subtotal_mismatch`, `total_mismatch`, `currency_not_kes`).
+- FR-L4. Each line is matched conservatively against the business's active products: SKU/barcode or exact normalised name → MATCHED; fuzzy name ≥ 0.90 with no close runner-up → MATCHED; ≥ 0.70 → AMBIGUOUS with up to three candidates; otherwise UNMATCHED. Only MATCHED lines are pre-selected for the owner. Matching looks at the first 500 active products by name (documented limitation).
+- FR-L5. The owner reviews every line: choose or change the product, edit quantity and unit cost, tick/untick lines, optionally update the product's cost price. Nothing touches stock until the owner confirms.
+- FR-L6. Confirmation applies each ticked line as an ordinary RESTOCK movement through the inventory service, in one transaction under the receipt row lock, with audit rows that reference the receipt and line. A second confirmation is a 409; a concurrent one loses. Skipped lines are recorded as SKIPPED. Confirmed receipts cannot be cancelled.
+- FR-L7. Without `ANTHROPIC_API_KEY` the read step answers 503 `RECEIPT_AI_NOT_CONFIGURED`; provider failures (timeout, busy, unavailable, malformed output) mark the receipt FAILED with the error code and can be retried. Upload, review and confirmation of an already-read receipt work without the provider. The AI never writes to the database.
+- FR-L8. Live extraction REQUIRES ANTHROPIC API BILLING on the configured key; it is exercised in tests only through a deterministic fake provider.
 
 ### FR-K Audit
 - FR-K1. The following are audited with actor, timestamp, entity and before/after: sale void, stock adjustment, restock, credit adjustment, expense edit/delete, product price change, user role/deactivation, business settings change.
@@ -242,7 +254,7 @@ Requirement IDs are stable; reference them from tests and commits.
 | NFR-9 | Observability: structured JSON logs with request IDs, Sentry for errors, basic metrics (request rate, error rate, AI cost). |
 | NFR-10 | Accessibility: WCAG 2.1 AA colour contrast, keyboard-operable forms, touch targets ≥ 44px. |
 | NFR-11 | All timestamps stored in UTC; "today" computed in the business timezone. |
-| NFR-12 | Data export: OWNER can export sales, customers and expenses as CSV (avoid lock-in; builds trust). |
+| NFR-12 | Data export: OWNER can export sales, customers and expenses as CSV (avoid lock-in; builds trust). Implemented: `GET /expenses/export.csv`, `GET /sales/export.csv` (one row per sale line, voided sales included with status), `GET /customers/export.csv`; streamed in keyset batches, dates in the business timezone. |
 
 ## 13. User stories
 
@@ -267,7 +279,7 @@ Format: As a *role*, I want *X*, so that *Y*. Priority: M (must), S (should), C 
 | US-15 | As an owner, I want to override a price during a sale, so that bargaining is recorded honestly. | S |
 | US-16 | As an owner, I want to ask the copilot in Swahili, so that I can use my own words. | S |
 | US-17 | As an owner, I want to export my data as CSV, so that my data is mine. | S |
-| US-18 | As an owner, I want to paste an M-Pesa message or photograph a receipt and have the expense drafted for me, so that recording is faster. | C |
+| US-18 | As an owner, I want to paste an M-Pesa message or photograph a receipt and have the expense drafted for me, so that recording is faster. | C — the receipt-photo → restock half is built (FR-L); the M-Pesa-SMS → expense half is future scope |
 | US-19 | As an owner, I want to share a daily summary to WhatsApp, so that I can send it to my partner. | C (post-MVP) |
 
 ## 14. User journeys
@@ -292,7 +304,7 @@ Format: As a *role*, I want *X*, so that *Y*. Priority: M (must), S (should), C 
 
 ### J5. Asking the copilot
 1. Owner opens Copilot, types "Ni bidhaa gani zimeuzwa zaidi wiki hii?" (which products sold most this week).
-2. Backend authenticates, loads the conversation, sends the message plus tool definitions to Claude. Claude calls `get_top_products(period="this_week")`. Backend executes it scoped to the business, returns validated JSON. Claude answers in Swahili with the figures. The backend streams the answer to the client as it arrives, then runs guardrails over the full response and stores it with the tool results (ARCHITECTURE §6.1).
+2. Backend authenticates, loads the conversation, sends the message plus tool definitions to Claude. Claude calls `get_top_products(period="this_week")`. Backend executes it scoped to the business, returns validated JSON. Claude answers in Swahili with the figures. As built, the backend runs guardrails over the full response and returns it whole (no streaming yet), storing it with the tool results (ARCHITECTURE §6.1, §6.8).
 
 ### J6. Voiding a mistake
 1. Owner opens Sales → today → tap the wrong sale → Void → reason → confirm.
@@ -425,9 +437,43 @@ Requirements:
 - AI-6. The backend validates every model response once streaming completes: content blocks are text or allowed tool calls only, no leaked system prompt, tool inputs pass their schemas. Output length is bounded by `max_tokens`, never by cutting text after the fact. Correctness of the figures in an answer is verified by the eval set (AI-11); runtime logic records which tool results backed the answer but does not prove the arithmetic.
 - AI-7. Every stored assistant message records the model ID, token usage, the tool calls made and their results (for audit and eval).
 - AI-8. Quotas: default 10 user messages per business per day and 100 per calendar month, held in server-side configuration (`AI_DAILY_MESSAGE_LIMIT`, `AI_MONTHLY_MESSAGE_LIMIT`). Business owners cannot change these limits; they are operator settings. A global monthly spend cap alerts at 80% and stops at 100%. The defaults are deliberately conservative and are re-tuned in Phase 9 from measured cost (AI-12).
-- AI-9. Latency: stream responses; first token target ≤ 3 s.
+- AI-9. Latency: stream responses; first token target ≤ 3 s. **Not met as built** (whole answers; see §21).
 - AI-10. Safety: the model must decline requests to change data, to reveal other businesses' data, or to act outside business analysis; these cases are in the eval set.
 - AI-11. An eval set (fixture business + question/expected-answer pairs) exists before Phase 9 is complete and runs in CI against recorded tool outputs (not live model calls) plus a nightly live run.
 - AI-12. Default model is `claude-opus-5` (configurable via `AI_MODEL`); adaptive thinking on; per-request `max_tokens` bounded. At the start of Phase 9, verify current model pricing from the Anthropic documentation, measure real per-message cost from `usage` (including cache reads), and set the quota so a business at the quota stays within the §18 cost target. If it cannot, evaluate a cheaper model against the eval set before changing the default. Pricing figures are never assumed from memory.
 - AI-13. PII minimisation: customer phone numbers are not sent to the model unless the question requires them (e.g. "give me John's number"), and then only for the customers in the result set.
 - AI-14. STAFF cannot use the copilot in MVP (it exposes profit). Revisit with a role-aware tool subset.
+
+## 21. Implementation status (2026-09-17, after Phase 14 and the Phase 15 hardening audit)
+
+This section is the honest map between this document and the code. "IMPLEMENTED" means built and covered by the automated suites (backend against a real PostgreSQL, frontend with Vitest) and, where noted, walked through in a browser. Nothing here claims a production deployment exists.
+
+### IMPLEMENTED
+- Business account and authentication (FR-A, FR-B1–B5; FR-B6 as owner-initiated staff reset only), users and roles with the §16 matrix enforced server-side (FR-C), audit rows for the FR-K1 list plus inventory/credit/receipt actions.
+- Products, categories, inventory (FR-D, FR-E; incl. opening stock, restock with optional cost update, adjustments, low stock, movement history, stock-cache recompute).
+- Sales and payments (FR-F1–F9; idempotency, discount allocation BR-9/BR-14, voids that reverse stock and credit).
+- Customers and credit (FR-G1–G5; ledger as source of truth, balance cache recompute `POST /customers/recompute`). Customer edit/archive and PII deletion (NFR-7) are **not** built.
+- Expenses (FR-H) with soft delete and CSV export; analytics (FR-I1–I7) in the business timezone.
+- AI copilot (FR-J1–J8, AI-1–AI-8 quotas, AI-10, AI-13, AI-14) — read-only tools, tenant scoped, whole-answer responses (no streaming, AI-9 open), no enforced global spend cap.
+- Supplier receipt intelligence (FR-L1–L7) — upload, validation, private storage, extraction pipeline, conservative matching, owner review and atomic confirmation into inventory.
+- Data exports (NFR-12): expenses, sales and customers CSV.
+- Public homepage at `/`; the app at `/dashboard`; mobile layouts checked at 390, 412, 820 and 1366 px.
+- Operational: structured JSON logs with request ids, error envelope with no internals, in-process rate limits on auth and AI endpoints, `/health/live` and `/health/ready` (database + migration head; receipt storage reported), Sentry initialisation when `SENTRY_DSN` is set, production start-up guards (secure cookies, no wildcard CORS, no placeholder JWT secret, absolute receipt storage path).
+
+### PLANNED (not built)
+- Password self-service reset (FR-B6) — needs an SMS/email provider.
+- Customer edit/archive and PII deletion on request (FR-G1 "CRUD", NFR-7).
+- Streaming copilot answers (AI-9) and the global AI spend cap with 80 % alert (AI-8, FR-J6 "global cost cap").
+- M-Pesa SMS → expense draft (US-18 second half); M-Pesa Daraja; WhatsApp; offline sync; PWA; Swahili UI; multi-branch; suppliers; eTIMS (§10).
+- Audit-log UI (§9 row 12 "minimal UI") — the table is written; no endpoint or screen reads it yet.
+- Receipt image retention automation (docs/OPERATIONS.md defines the rule; no purge job exists) and an object-storage backend (the `BlobStorage` interface exists; only local-file storage is implemented).
+- Postgres row-level security as a second isolation layer (ROADMAP Phase 11).
+
+### REQUIRES EXTERNAL CONFIGURATION (code is ready; the environment is not)
+- **Anthropic API billing** on the configured key: without it the copilot and receipt reading answer with the documented 503/400-derived errors and the rest of the product works. Live extraction has not been verified.
+- **Production object storage / persistent volume** for receipt images: `RECEIPT_STORAGE_DIR` must point at persistent, absolute storage (a mounted volume); the container disk is ephemeral.
+- **Production secrets** (`JWT_SECRET`, `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SENTRY_DSN`) in Railway/Vercel, never in the repository.
+- **Database backups** — Railway snapshots and an off-platform `pg_dump` schedule are described in docs/OPERATIONS.md but are not configured anywhere yet (NFR-8 is therefore unmet).
+- **Deployment configuration** — `backend/railway.toml` (migrations before traffic, readiness health check) and `frontend/vercel.json` (SPA rewrite, security headers) are in the repo but have never been exercised against a real Railway/Vercel project; `FORWARDED_ALLOW_IPS` must be set in the Railway service so per-IP rate limits key on the client address.
+- **Monitoring** — Sentry only activates with a DSN; there is no uptime check, no alerting and no frontend Sentry yet (NFR-9 partly unmet).
+- **Argon2 cost calibration** on the production instance (ARCHITECTURE §5.2) and a tested restore drill before the pilot.

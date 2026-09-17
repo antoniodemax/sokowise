@@ -11,6 +11,7 @@ them to HTTP. Stack traces, SQL and internal identifiers never reach the client.
 import logging
 from http import HTTPStatus
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -155,6 +156,7 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("unhandled exception", extra={"path": request.url.path})
+    sentry_sdk.capture_exception(exc)  # no-op unless Sentry is initialised; de-duplicated
     return error_response(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         code="INTERNAL_ERROR",

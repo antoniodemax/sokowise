@@ -83,7 +83,7 @@ jobs:
         run: uv run pytest
 
   frontend:
-    name: Frontend (lint, build)
+    name: Frontend (lint, test, build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -99,6 +99,8 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Test
+        run: npm test
       - name: Build
         run: npm run build
 

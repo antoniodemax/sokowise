@@ -1,11 +1,12 @@
-"""Compare (and optionally repair) `products.stock_quantity` against the movement ledger.
+"""Compare (and optionally repair) the two cached columns against their ledgers:
+`products.stock_quantity` (Σ inventory movements) and `customers.balance` (Σ credit ledger).
 
     uv run --env-file ../.env python scripts/recompute_caches.py            # report only
     uv run --env-file ../.env python scripts/recompute_caches.py --apply    # repair
 
 Runs the same `services.inventory.recompute_stock` the OWNER endpoint uses, for every
 business, under a system context (audit rows carry the business's oldest active owner
-as actor so they stay attributable). Customer balances are not covered here.
+as actor so they stay attributable), then `services.credit.recompute_balances`.
 """
 
 import argparse
@@ -20,6 +21,7 @@ from app.core.context import BusinessContext
 from app.db.session import create_engine, create_session_factory
 from app.models import Business, BusinessMembership
 from app.models.enums import MembershipRole
+from app.services.credit import recompute_balances
 from app.services.inventory import recompute_stock
 from sqlalchemy import select
 
@@ -63,6 +65,18 @@ async def main(apply: bool) -> int:
                 print(
                     f"{business.id}: {result.products_checked} tracked products checked, "
                     f"{len(result.discrepancies)} discrepancies"
+                )
+                balances = await recompute_balances(session, ctx, apply=apply)
+                for b in balances.discrepancies:
+                    drift += 1
+                    verb = "repaired" if b.repaired else "drift"
+                    print(
+                        f"{business.id} customer {b.customer_id}: "
+                        f"cache {b.cached_balance} ledger {b.ledger_balance} ({verb})"
+                    )
+                print(
+                    f"{business.id}: {balances.customers_checked} customers checked, "
+                    f"{len(balances.discrepancies)} balance discrepancies"
                 )
     finally:
         await engine.dispose()

@@ -85,6 +85,44 @@ describe('request', () => {
   })
 })
 
+describe('request deadlines and malformed replies', () => {
+  it('aborts a request that never answers and reports a TIMEOUT', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal!.addEventListener('abort', () => reject(init.signal!.reason as Error))
+      }))
+      const pending = request('/api/v1/auth/me', { timeoutMs: 50 }).catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(60)
+      expect(await pending).toMatchObject({ status: 0, code: 'TIMEOUT' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('honours the caller abort without converting it into an API error', async () => {
+    const controller = new AbortController()
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    const pending = request('/api/v1/auth/me', { signal: controller.signal }).catch((e: unknown) => e)
+    controller.abort()
+    expect(await pending).toBeInstanceOf(DOMException)
+  })
+
+  it('turns a non-JSON success body (a misrouted proxy page) into BAD_RESPONSE', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('<!doctype html><title>SokoWise</title>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
+    await expect(request('/api/v1/auth/me', { auth: false })).rejects.toMatchObject({ status: 200, code: 'BAD_RESPONSE' })
+  })
+
+  it('reports a network failure, not a session end, when the refresh cannot reach the server', async () => {
+    sessionStore.set({ ...session, access_token: 'stale' })
+    fetchMock.mockResolvedValueOnce(envelope(401, 'UNAUTHORIZED')).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(request('/api/v1/auth/me')).rejects.toMatchObject({ status: 0, code: 'NETWORK_ERROR' })
+    expect(sessionStore.get()).not.toBeNull()
+  })
+})
+
 describe('refreshSession single flight', () => {
   it('shares one refresh between concurrent 401s and retries each request once', async () => {
     sessionStore.set({ ...session, access_token: 'stale' })

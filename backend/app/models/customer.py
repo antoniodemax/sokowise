@@ -81,6 +81,8 @@ class CreditTransaction(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             name="repayment_has_payment_method",
         ),
         Index(None, "business_id", "customer_id", "occurred_at"),
+        # Period queries over the whole ledger (cash collected: REPAYMENTs in a period).
+        Index(None, "business_id", "occurred_at"),
         Index(None, "sale_id"),
         Index(None, "payment_id"),
         Index(None, "created_by"),

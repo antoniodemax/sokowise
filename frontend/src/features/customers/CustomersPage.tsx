@@ -1,5 +1,7 @@
-import { HandCoins, Plus, Search, Users } from 'lucide-react'
+import { Download, HandCoins, Plus, Search, Users } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -12,16 +14,25 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth-context'
 import { formatDate } from '@/lib/dates'
+import { saveBlob } from '@/lib/download'
+import { describeError } from '@/lib/errors'
 import { formatKsh } from '@/lib/money'
 import { useDebouncedValue } from '@/lib/use-debounce'
 import { cn } from '@/lib/utils'
 
 import { BalanceBadge } from './BalanceBadge'
 import { CustomerFormDialog } from './CustomerFormDialog'
+import { customersApi } from './api'
 import { useCustomers, useDebtors } from './hooks'
 
 export default function CustomersPage() {
   const { session } = useAuth()
+  const isOwner = session?.role === 'OWNER'
+  const exportCsv = useMutation({
+    mutationFn: () => customersApi.exportCsv(),
+    onSuccess: (blob) => saveBlob(blob, 'sokowise-customers.csv'),
+    onError: (error) => toast.error(describeError(error)),
+  })
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const view = params.get('view') === 'debtors' ? 'debtors' : 'all'
@@ -45,7 +56,7 @@ export default function CustomersPage() {
 
   return (
     <>
-      <PageHeader title="Customers" description="People you sell to, and what they owe." actions={<><Button onClick={() => setCreating(true)}><Plus aria-hidden="true" /> Add customer</Button></>} />
+      <PageHeader title="Customers" description="People you sell to, and what they owe." actions={<>{isOwner && <Button variant="outline" onClick={() => exportCsv.mutate()} loading={exportCsv.isPending}><Download aria-hidden="true" /> Export CSV</Button>}<Button onClick={() => setCreating(true)}><Plus aria-hidden="true" /> Add customer</Button></>} />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         {tabs}
         {view === 'all' ? (

@@ -20,4 +20,8 @@ def test_ready_reports_unavailable_when_database_is_unreachable(
     with TestClient(create_app(Settings())) as client:
         response = client.get("/health/ready")
     assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
-    assert response.json() == {"status": "not_ready", "checks": {"database": "unavailable"}}
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["checks"]["database"] == "unavailable"
+    assert body["checks"]["migrations"] == "unknown"
+    assert body["checks"]["receipt_storage"] == "ok"

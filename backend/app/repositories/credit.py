@@ -36,9 +36,9 @@ async def list_entries(
 ) -> list[CreditTransaction]:
     """Newest first by business time (`occurred_at`), then posting order.
 
-    `balance_after` was computed in posting order; entries are not backdated in Phase 7,
-    so the two orders coincide. Should a later phase backdate an entry, the running
-    balance shown next to it still reflects when it was posted (same rule as
+    `balance_after` was computed in posting order. A CHARGE from a backdated sale carries
+    the sale's `sold_at` as `occurred_at`, so the two orders can differ for that entry;
+    the running balance shown next to it still reflects when it was posted (same rule as
     `inventory_movements.quantity_after`, DATA_MAPPING §3.7).
     """
     result = await session.scalars(

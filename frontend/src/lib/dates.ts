@@ -59,3 +59,19 @@ export function zonedDayRange(from: string, to: string, timeZone: string): { fro
   const dayAfter = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
   return { from: zonedStartOfDay(from, timeZone).toISOString(), to: zonedStartOfDay(dayAfter, timeZone).toISOString() }
 }
+
+/** "18:47" in the business timezone. */
+export function formatTime(iso: string | null | undefined, timeZone: string): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Intl.DateTimeFormat('en-KE', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
+}
+
+/** "17 Sept" — the phone-width form of formatDate. */
+export function formatDayMonth(iso: string | null | undefined, timeZone: string): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Intl.DateTimeFormat('en-KE', { timeZone, day: 'numeric', month: 'short' }).format(date)
+}

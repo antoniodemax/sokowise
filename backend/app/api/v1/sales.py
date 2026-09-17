@@ -5,15 +5,21 @@ narrows the view); OWNER reads everything and is the only one who can void or
 backdate. `Idempotency-Key` is mandatory on creation (FR-F6).
 """
 
+import csv
+import io
 import uuid
-from datetime import datetime
+from collections.abc import AsyncIterator
+from datetime import date, datetime
 from http import HTTPStatus
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_client_info, require_member, require_owner
+from app.api.v1.common import optional_period
 from app.core.context import BusinessContext, ClientInfo
 from app.db.session import get_session
 from app.models import Sale
@@ -47,6 +53,83 @@ def sale_out(sale: Sale) -> SaleOut:
         void_reason=sale.void_reason,
         items=[SaleItemOut.model_validate(i, from_attributes=True) for i in sale.items],
         payments=[PaymentOut.model_validate(p, from_attributes=True) for p in sale.payments],
+    )
+
+
+CSV_COLUMNS = (
+    "date",
+    "time",
+    "sale_id",
+    "status",
+    "customer",
+    "product",
+    "quantity",
+    "unit_price",
+    "line_total",
+    "discount_allocated",
+    "net_line_total",
+    "unit_cost",
+    "sale_total",
+    "payments",
+    "note",
+    "void_reason",
+)
+
+
+@router.get("/export.csv")
+async def export_csv(
+    ctx: OwnerCtx,
+    session: SessionDep,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> StreamingResponse:
+    """One row per sale line, oldest first, voided sales included with their status (NFR-12).
+
+    Dates are the business's local calendar days; `net_line_total` is the line after its
+    share of the sale-level discount (BR-14), so summing it over COMPLETED rows gives revenue.
+    """
+    period = optional_period(ctx, date_from, date_to)
+    tz = ZoneInfo(ctx.timezone)
+
+    async def rows() -> AsyncIterator[bytes]:
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow(CSV_COLUMNS)
+        yield buffer.getvalue().encode("utf-8")
+        async for entry in sales_service.iter_export(session, ctx, period=period):
+            sale = entry.sale
+            local = sale.sold_at.astimezone(tz)
+            payments = "; ".join(f"{p.method.value} {p.amount}" for p in sale.payments)
+            buffer.seek(0)
+            buffer.truncate()
+            for item in sale.items:
+                writer.writerow(
+                    [
+                        local.date().isoformat(),
+                        local.strftime("%H:%M"),
+                        str(sale.id),
+                        sale.status.value,
+                        entry.customer_name or "",
+                        item.product_name,
+                        str(item.quantity),
+                        str(item.unit_price),
+                        str(item.line_total),
+                        str(item.discount_allocated),
+                        str(item.line_total - item.discount_allocated),
+                        "" if item.unit_cost is None else str(item.unit_cost),
+                        str(sale.total_amount),
+                        payments,
+                        sale.note or "",
+                        sale.void_reason or "",
+                    ]
+                )
+            yield buffer.getvalue().encode("utf-8")
+
+    suffix = f"-{period.date_from}-{period.date_to}" if period else ""
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="sales{suffix}.csv"'},
     )
 
 

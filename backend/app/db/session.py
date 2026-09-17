@@ -23,8 +23,23 @@ def create_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(
         str(settings.database_url),
         pool_pre_ping=True,
-        # Fail fast on an unreachable database instead of hanging a request.
-        connect_args={"timeout": 5},
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=10,
+        pool_recycle=1800,
+        # Bound parameters (customer names, phone numbers) never reach an error log in
+        # production; SQLAlchemy would otherwise append them to every DBAPI exception.
+        hide_parameters=settings.is_production,
+        connect_args={
+            # Fail fast on an unreachable database instead of hanging a request.
+            "timeout": 5,
+            "server_settings": {
+                "application_name": settings.app_name,
+                # A statement that waits on a lock or runs away is cancelled server-side
+                # rather than pinning a pooled connection for good.
+                "statement_timeout": str(settings.db_statement_timeout_ms),
+            },
+        },
     )
 
 

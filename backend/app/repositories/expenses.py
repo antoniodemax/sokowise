@@ -95,6 +95,7 @@ async def used_categories(session: AsyncSession, business_id: uuid.UUID) -> list
         .where(Expense.business_id == business_id, Expense.deleted_at.is_(None))
         .distinct()
         .order_by(Expense.category)
+        .limit(MAX_LIST_LIMIT)
     )
     return list(result)
 

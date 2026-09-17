@@ -1,8 +1,12 @@
-import { Plus, Receipt } from 'lucide-react'
+import { Download, Plus, Receipt } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Link, useNavigate } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { When } from '@/components/ui/when'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
@@ -11,9 +15,12 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth-context'
-import { formatDateTime, localDate, zonedDayRange } from '@/lib/dates'
+import { localDate, zonedDayRange } from '@/lib/dates'
+import { describeError } from '@/lib/errors'
+import { saveBlob } from '@/lib/download'
 import { formatKsh } from '@/lib/money'
 
+import { salesApi } from './api'
 import { useSales } from './hooks'
 import { tenderSummary } from './summary'
 
@@ -28,11 +35,25 @@ export default function SalesPage() {
   // The backend filters on instants (sold_at >= from, < until), so calendar dates become the
   // business-timezone day boundaries here.
   const range = isOwner && dateFrom && dateTo && dateFrom <= dateTo ? zonedDayRange(dateFrom, dateTo, tz) : null
+  const exportCsv = useMutation({
+    mutationFn: () => salesApi.exportCsv(range ? { date_from: dateFrom, date_to: dateTo } : {}),
+    onSuccess: (blob) => saveBlob(blob, `sokowise-sales-${range ? `${dateFrom}-to-${dateTo}` : 'all'}.csv`),
+    onError: (error) => toast.error(describeError(error)),
+  })
   const sales = useSales(range ? { date_from: range.from, date_to: range.to, limit: 200 } : { limit: 200 })
 
   return (
     <>
-      <PageHeader title="Sales" description={isOwner ? 'Every sale recorded, newest first.' : 'Your sales from today.'} actions={<Link to="/sales/new" className={buttonVariants()}><Plus aria-hidden="true" /> New sale</Link>} />
+      <PageHeader
+        title="Sales"
+        description={isOwner ? 'Every sale recorded, newest first.' : 'Your sales from today.'}
+        actions={
+          <>
+            {isOwner && <Button variant="outline" onClick={() => exportCsv.mutate()} loading={exportCsv.isPending}><Download aria-hidden="true" /> Export CSV</Button>}
+            <Link to="/sales/new" className={buttonVariants()}><Plus aria-hidden="true" /> New sale</Link>
+          </>
+        }
+      />
       {isOwner && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:max-w-md">
           <div>
@@ -64,11 +85,11 @@ export default function SalesPage() {
           <TableBody>
             {sales.data.map((sale) => (
               <TableRow key={sale.id} className="cursor-pointer" onClick={() => navigate(`/sales/${sale.id}`)}>
-                <TableCell className="whitespace-nowrap">
-                  <Link to={`/sales/${sale.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{formatDateTime(sale.sold_at, tz)}</Link>
-                  {sale.status === 'VOIDED' && <Badge variant="destructive" className="ml-2">Voided</Badge>}
+                <TableCell>
+                  <Link to={`/sales/${sale.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}><When iso={sale.sold_at} timeZone={tz} /></Link>
+                  {sale.status === 'VOIDED' && <Badge variant="destructive" className="ml-2 align-top">Voided</Badge>}
                 </TableCell>
-                <TableCell className="max-w-64 truncate text-muted-foreground">{sale.items.map((i) => `${i.quantity.replace(/\.?0+$/, '')}× ${i.product_name}`).join(', ')}</TableCell>
+                <TableCell className="max-w-32 truncate text-muted-foreground sm:max-w-64">{sale.items.map((i) => `${i.quantity.replace(/\.?0+$/, '')}× ${i.product_name}`).join(', ')}</TableCell>
                 <TableCell className="hidden text-muted-foreground sm:table-cell">{tenderSummary(sale)}</TableCell>
                 <TableCell className={`tabular text-right font-semibold ${sale.status === 'VOIDED' ? 'text-muted-foreground line-through' : ''}`}>{formatKsh(sale.total_amount)}</TableCell>
               </TableRow>

@@ -15,6 +15,7 @@ describe('SalesPage', () => {
     expect(params.get('date_from')).toMatch(/T21:00:00\.000Z$/) // midnight in Nairobi
     expect(params.get('date_to')).toMatch(/T21:00:00\.000Z$/)
     expect(new Date(params.get('date_to')!).getTime() - new Date(params.get('date_from')!).getTime()).toBe(86_400_000)
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
   })
 
   it('shows staff their own day without date filters', async () => {
@@ -23,5 +24,6 @@ describe('SalesPage', () => {
     expect(await screen.findByText('No sales here')).toBeInTheDocument()
     expect(screen.queryByLabelText('From')).not.toBeInTheDocument()
     expect(api.of('GET', '/api/v1/sales')[0].url.searchParams.has('date_from')).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Export CSV' })).not.toBeInTheDocument()
   })
 })

@@ -484,3 +484,28 @@ async def test_price_change_never_touches_the_ledger(
     await api.patch(f"{URL}/{product['id']}", headers=a.owner, json={"cost_price": "999"})
     (m,) = await _movements(db_session, product["id"])
     assert m.unit_cost == Decimal("100.00")
+
+
+async def test_tracking_stays_on_once_the_product_has_movements(
+    api: AsyncClient, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Otherwise voiding an old sale could no longer write its SALE_REVERSAL (FR-F7)."""
+    from tests.db.sales_helpers import SALES_URL, make_product, sale_payload, sell
+
+    a, _ = tenants
+    fresh = await api.post(URL, headers=a.owner, json={"name": "Fresh", "selling_price": "10"})
+    assert fresh.status_code == HTTPStatus.CREATED
+    untrack = await api.patch(
+        f"{URL}/{fresh.json()['id']}", headers=a.owner, json={"track_inventory": False}
+    )
+    assert untrack.status_code == HTTPStatus.OK  # no history: fine
+
+    product_id = (await make_product(api, a.owner, name="Sold out", price="10", stock="2"))["id"]
+    sale = await sell(api, a.owner, sale_payload([(product_id, "2")], [("CASH", "20")]))
+    blocked = await api.patch(
+        f"{URL}/{product_id}", headers=a.owner, json={"track_inventory": False}
+    )
+    assert blocked.status_code == HTTPStatus.CONFLICT
+    assert error_code(blocked) == "PRODUCT_HAS_MOVEMENTS"
+    void = await api.post(f"{SALES_URL}/{sale['id']}/void", headers=a.owner, json={"reason": "x"})
+    assert void.status_code == HTTPStatus.OK, void.text

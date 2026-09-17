@@ -7,7 +7,7 @@ are `lazy="raise"`).
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -75,4 +75,28 @@ async def list_sales(
     if created_by is not None:
         stmt = stmt.where(Sale.created_by == created_by)
     stmt = stmt.order_by(Sale.sold_at.desc(), Sale.id.desc()).limit(min(limit, MAX_LIST_LIMIT))
+    return list(await session.scalars(_with_children(stmt)))
+
+
+EXPORT_BATCH = 200
+
+
+async def export_batch(
+    session: AsyncSession,
+    business_id: uuid.UUID,
+    *,
+    sold_from: datetime | None,
+    sold_until: datetime | None,
+    after: tuple[datetime, uuid.UUID] | None,
+    batch: int = EXPORT_BATCH,
+) -> list[Sale]:
+    """One keyset page of sales with their lines and tenders, oldest first (CSV export)."""
+    stmt = select(Sale).where(Sale.business_id == business_id)
+    if sold_from is not None:
+        stmt = stmt.where(Sale.sold_at >= sold_from)
+    if sold_until is not None:
+        stmt = stmt.where(Sale.sold_at < sold_until)
+    if after is not None:
+        stmt = stmt.where(tuple_(Sale.sold_at, Sale.id) > after)
+    stmt = stmt.order_by(Sale.sold_at.asc(), Sale.id.asc()).limit(batch)
     return list(await session.scalars(_with_children(stmt)))

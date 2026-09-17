@@ -22,6 +22,7 @@ from app.db.session import transaction
 from app.models import Product
 from app.models.enums import MovementType
 from app.repositories import categories as category_repo
+from app.repositories import inventory as inventory_repo
 from app.repositories import products as product_repo
 from app.schemas.catalog import ProductCreateRequest, ProductUpdateRequest
 from app.services import audit, inventory
@@ -73,6 +74,8 @@ async def list_products(
     include_archived: bool,
     limit: int,
 ) -> list[Product]:
+    # A filter naming another business's category is a cross-tenant miss (404), not [].
+    await _ensure_category(session, ctx, category_id)
     return await product_repo.list_products(
         session,
         ctx.business_id,
@@ -157,11 +160,21 @@ async def update_product(
             changes = {name: getattr(data, name) for name in data.model_fields_set}
             if "category_id" in changes:
                 await _ensure_category(session, ctx, changes["category_id"])
-            if changes.get("track_inventory") is False and product.stock_quantity != 0:
-                raise ConflictError(
-                    "Adjust the stock to zero before switching off stock tracking",
-                    code="PRODUCT_HAS_STOCK",
-                )
+            if changes.get("track_inventory") is False and product.track_inventory:
+                if product.stock_quantity != 0:
+                    raise ConflictError(
+                        "Adjust the stock to zero before switching off stock tracking",
+                        code="PRODUCT_HAS_STOCK",
+                    )
+                # A product with movements stays tracked: voiding one of its sales must
+                # still be able to write the SALE_REVERSAL movement (FR-F7).
+                if await inventory_repo.count_movements_for_product(
+                    session, business_id=ctx.business_id, product_id=product.id
+                ):
+                    raise ConflictError(
+                        "This product has stock history and stays tracked",
+                        code="PRODUCT_HAS_MOVEMENTS",
+                    )
 
             price_before: dict[str, object] = {}
             price_after: dict[str, object] = {}

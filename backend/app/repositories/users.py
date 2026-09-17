@@ -45,6 +45,7 @@ async def list_memberships(session: AsyncSession, user_id: uuid.UUID) -> list[Bu
         select(BusinessMembership)
         .where(BusinessMembership.user_id == user_id)
         .order_by(BusinessMembership.created_at, BusinessMembership.id)
+        .limit(MAX_MEMBERS)
     )
     return list(result)
 
@@ -53,6 +54,10 @@ async def list_memberships(session: AsyncSession, user_id: uuid.UUID) -> list[Bu
 #
 # Every function below takes `business_id` from a verified BusinessContext; there is no
 # lookup of a membership by bare id.
+
+
+# Bounded like every other listing (a shop has a handful of members).
+MAX_MEMBERS = 500
 
 
 async def list_members(session: AsyncSession, business_id: uuid.UUID) -> list[BusinessMembership]:

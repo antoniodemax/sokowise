@@ -9,6 +9,8 @@ No customer field is logged: name, phone and notes are personal data (PRD NFR-7)
 """
 
 import uuid
+from collections.abc import AsyncIterator
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
@@ -72,3 +74,15 @@ async def create_customer(
             ) from None
         raise
     return customer
+
+
+async def iter_export(session: AsyncSession, ctx: BusinessContext) -> AsyncIterator[Customer]:
+    """OWNER export (PRD NFR-12): every customer, archived included, oldest first."""
+    after: tuple[datetime, uuid.UUID] | None = None
+    while True:
+        batch = await customer_repo.export_batch(session, ctx.business_id, after=after)
+        for customer in batch:
+            yield customer
+        if len(batch) < customer_repo.EXPORT_BATCH:
+            return
+        after = (batch[-1].created_at, batch[-1].id)

@@ -18,7 +18,7 @@ export function describeError(error: unknown): string {
               ? 'The server did not accept this request from this address. Check that the app origin is allowed (CORS_ORIGINS) and reload.'
               : 'You do not have permission to do this.'
       case 404:
-        return 'Not found.'
+        return 'Not found. It may have been removed, or the link is wrong.'
       case 409:
         return error.message
       case 422:
@@ -26,6 +26,7 @@ export function describeError(error: unknown): string {
       case 429:
         return 'Too many attempts. Please wait a moment and try again.'
       default:
+        if (error.code === 'BAD_RESPONSE') return error.message
         return error.status >= 500 ? 'Something went wrong on our side. Please try again.' : error.message
     }
   }

@@ -1,4 +1,5 @@
 import { request } from '@/lib/api'
+import { fetchCsv } from '@/lib/download'
 
 export type PaymentMethod = 'CASH' | 'MPESA' | 'CREDIT'
 export type SaleStatus = 'COMPLETED' | 'VOIDED'
@@ -62,4 +63,6 @@ export const salesApi = {
   list: (params: SaleListParams, signal?: AbortSignal) => request<Sale[]>('/api/v1/sales', { query: params, signal }),
   get: (id: string, signal?: AbortSignal) => request<Sale>(`/api/v1/sales/${id}`, { signal }),
   void: (id: string, reason: string) => request<Sale>(`/api/v1/sales/${id}/void`, { method: 'POST', body: { reason } }),
+  /** OWNER only: one CSV row per sale line, local dates (PRD NFR-12). */
+  exportCsv: (params: { date_from?: string; date_to?: string }): Promise<Blob> => fetchCsv('/api/v1/sales/export.csv', params, 'Could not export sales.'),
 }

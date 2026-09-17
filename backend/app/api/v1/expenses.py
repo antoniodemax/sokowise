@@ -18,10 +18,9 @@ from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.periods import Period, period_for_dates
 from app.api.deps import get_client_info, require_owner
+from app.api.v1.common import optional_period
 from app.core.context import BusinessContext, ClientInfo
-from app.core.errors import AppError
 from app.db.session import get_session
 from app.models import Expense
 from app.models.enums import MoneyReceivedMethod
@@ -44,20 +43,7 @@ ClientDep = Annotated[ClientInfo, Depends(get_client_info)]
 CSV_COLUMNS = ("date", "time", "category", "amount", "payment_method", "reference", "note")
 
 
-class InvalidPeriodError(AppError):
-    status_code = 422
-    code = "INVALID_PERIOD"
-
-
-def _period(ctx: BusinessContext, date_from: date | None, date_to: date | None) -> Period | None:
-    if date_from is None and date_to is None:
-        return None
-    if date_from is None or date_to is None:
-        raise InvalidPeriodError("date_from and date_to must be given together")
-    try:
-        return period_for_dates(ctx.timezone, date_from, date_to)
-    except ValueError as exc:
-        raise InvalidPeriodError(str(exc)) from None
+_period = optional_period
 
 
 def _category_filter(category: str | None) -> str | None:

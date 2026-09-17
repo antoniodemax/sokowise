@@ -237,3 +237,44 @@ async def test_tenant_isolation(
     await assert_tenant_isolated(api, db_session, case, a, b)
     # And in the other direction, so the check is not accidentally one-sided.
     await assert_tenant_isolated(api, db_session, case, b, a)
+
+
+async def test_list_filters_naming_another_tenants_resource_are_404(
+    api: AsyncClient, db_session: AsyncSession, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """A filter is a lookup too: a foreign id must be 404, not a silently empty list."""
+    a, b = tenants
+    customer_id = await _create_customer(api, db_session, b)
+    category_id = await _create_category(api, db_session, b)
+    for url in (
+        f"{SALES_URL}?customer_id={customer_id}",
+        f"{PRODUCTS_URL}?category_id={category_id}",
+    ):
+        assert (await api.get(url, headers=b.owner)).status_code == HTTPStatus.OK, url
+        foreign = await api.get(url, headers=a.owner)
+        assert foreign.status_code == HTTPStatus.NOT_FOUND, (url, foreign.text)
+
+
+async def test_initial_stock_for_another_tenants_product_is_404(
+    api: AsyncClient, db_session: AsyncSession, tenants: tuple[Tenant, Tenant]
+) -> None:
+    a, b = tenants
+    product_id = await _create_product(api, db_session, b)
+    response = await api.post(
+        f"{INVENTORY_URL}/initial",
+        headers=a.owner,
+        json={"product_id": product_id, "quantity": "1", "unit_cost": "1"},
+    )
+    assert response.status_code == HTTPStatus.NOT_FOUND, response.text
+
+
+async def test_timeseries_never_counts_another_tenants_sales(
+    api: AsyncClient, db_session: AsyncSession, tenants: tuple[Tenant, Tenant]
+) -> None:
+    a, b = tenants
+    await _create_sale(api, db_session, b)
+    own = await api.get("/api/v1/analytics/timeseries?period=today", headers=b.owner)
+    other = await api.get("/api/v1/analytics/timeseries?period=today", headers=a.owner)
+    assert own.status_code == other.status_code == HTTPStatus.OK
+    assert sum(int(bucket["sales_count"]) for bucket in own.json()["buckets"]) == 1
+    assert sum(int(bucket["sales_count"]) for bucket in other.json()["buckets"]) == 0

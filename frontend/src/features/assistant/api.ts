@@ -50,5 +50,5 @@ export const assistantApi = {
   getConversation: (id: string, signal?: AbortSignal) => request<ConversationDetail>(`/api/v1/ai/conversations/${id}`, { signal }),
   createConversation: () => request<Conversation>('/api/v1/ai/conversations', { method: 'POST', body: {} }),
   ask: (conversationId: string, content: string) =>
-    request<AskResponse>(`/api/v1/ai/conversations/${conversationId}/messages`, { method: 'POST', body: { content } }),
+    request<AskResponse>(`/api/v1/ai/conversations/${conversationId}/messages`, { method: 'POST', body: { content }, timeoutMs: 150_000 }),
 }

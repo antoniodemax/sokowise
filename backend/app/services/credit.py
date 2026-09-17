@@ -372,3 +372,69 @@ def enforce_credit_limit(
             },
         )
     return check
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceDiscrepancy:
+    customer_id: uuid.UUID
+    cached_balance: Decimal
+    ledger_balance: Decimal
+    repaired: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceRecomputeResult:
+    customers_checked: int
+    discrepancies: list[BalanceDiscrepancy]
+    applied: bool
+
+
+async def recompute_balances(
+    session: AsyncSession, ctx: BusinessContext, *, apply: bool, client: ClientInfo | None = None
+) -> BalanceRecomputeResult:
+    """Compare every customer's cached balance with Σ ledger; rewrite it when `apply`.
+
+    The ledger is the truth (PRD BR-7). Each customer is locked before its ledger sum is
+    read, exactly like `post_entry`, so a concurrent repayment cannot slip between the
+    comparison and the repair. A repair writes no ledger entry and is audited
+    (`credit.recompute`); a dry run (`apply=False`) changes nothing.
+    """
+    discrepancies: list[BalanceDiscrepancy] = []
+    async with transaction(session):
+        customer_ids = await customer_repo.list_customer_ids(session, ctx.business_id)
+        for customer_id in customer_ids:
+            customer = await customer_repo.get_customer_for_update(
+                session, business_id=ctx.business_id, customer_id=customer_id
+            )
+            if customer is None:  # pragma: no cover — listed a moment ago
+                continue
+            ledger = await credit_repo.sum_entries(
+                session, business_id=ctx.business_id, customer_id=customer_id
+            )
+            cached = customer.balance.quantize(Decimal("0.01"))
+            if cached == ledger:
+                continue
+            if apply:
+                customer.balance = ledger
+                await session.flush()
+                await audit.record(
+                    session,
+                    ctx,
+                    action=AuditAction.CREDIT_RECOMPUTE,
+                    entity_type=ENTITY_TYPE,
+                    entity_id=customer.id,
+                    before={"balance": str(cached)},
+                    after={"balance": str(ledger)},
+                    client=client,
+                )
+            discrepancies.append(
+                BalanceDiscrepancy(
+                    customer_id=customer_id,
+                    cached_balance=cached,
+                    ledger_balance=ledger,
+                    repaired=apply,
+                )
+            )
+    return BalanceRecomputeResult(
+        customers_checked=len(customer_ids), discrepancies=discrepancies, applied=apply
+    )

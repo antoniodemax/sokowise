@@ -7,12 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Category, Product
 
+# Bounded like every other listing; a business has nowhere near this many categories.
+MAX_LIST_LIMIT = 500
+
 
 async def list_categories(session: AsyncSession, business_id: uuid.UUID) -> list[Category]:
     result = await session.scalars(
         select(Category)
         .where(Category.business_id == business_id)
         .order_by(func.lower(Category.name), Category.id)
+        .limit(MAX_LIST_LIMIT)
     )
     return list(result)
 

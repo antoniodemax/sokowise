@@ -6,11 +6,16 @@ account mid-sale. Search is the `q` parameter of the list, so no path segment
 can collide with a customer id.
 """
 
+import csv
+import io
 import uuid
+from collections.abc import AsyncIterator
 from http import HTTPStatus
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_client_info, require_member, require_owner
@@ -21,6 +26,9 @@ from app.repositories.credit import MAX_LIST_LIMIT as LEDGER_LIMIT
 from app.repositories.customers import MAX_LIST_LIMIT
 from app.schemas.credit import (
     AdjustmentRequest,
+    BalanceDiscrepancyOut,
+    BalanceRecomputeRequest,
+    BalanceRecomputeResponse,
     LedgerEntryOut,
     LedgerResponse,
     RepaymentRequest,
@@ -66,6 +74,65 @@ async def create_customer(
 ) -> CustomerOut:
     row = await customers_service.create_customer(session, ctx, payload)
     return CustomerOut.model_validate(row, from_attributes=True)
+
+
+@router.post("/recompute", response_model=BalanceRecomputeResponse)
+async def recompute_balances(
+    payload: BalanceRecomputeRequest, ctx: OwnerCtx, session: SessionDep, client: ClientDep
+) -> BalanceRecomputeResponse:
+    """Compare every cached balance with its ledger (PRD BR-7); repair when `apply`."""
+    result = await credit_service.recompute_balances(
+        session, ctx, apply=payload.apply, client=client
+    )
+    return BalanceRecomputeResponse(
+        customers_checked=result.customers_checked,
+        discrepancies=[
+            BalanceDiscrepancyOut(
+                customer_id=d.customer_id,
+                cached_balance=d.cached_balance,
+                ledger_balance=d.ledger_balance,
+                repaired=d.repaired,
+            )
+            for d in result.discrepancies
+        ],
+        applied=result.applied,
+    )
+
+
+CSV_COLUMNS = ("name", "phone", "balance", "credit_limit", "status", "notes", "created_date")
+
+
+@router.get("/export.csv")
+async def export_csv(ctx: OwnerCtx, session: SessionDep) -> StreamingResponse:
+    """Every customer (archived included), oldest first, dates in the business tz (NFR-12)."""
+    tz = ZoneInfo(ctx.timezone)
+
+    async def rows() -> AsyncIterator[bytes]:
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow(CSV_COLUMNS)
+        yield buffer.getvalue().encode("utf-8")
+        async for customer in customers_service.iter_export(session, ctx):
+            buffer.seek(0)
+            buffer.truncate()
+            writer.writerow(
+                [
+                    customer.name,
+                    customer.phone or "",
+                    str(customer.balance),
+                    "" if customer.credit_limit is None else str(customer.credit_limit),
+                    "active" if customer.is_active else "archived",
+                    customer.notes or "",
+                    customer.created_at.astimezone(tz).date().isoformat(),
+                ]
+            )
+            yield buffer.getvalue().encode("utf-8")
+
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="customers.csv"'},
+    )
 
 
 @router.get("/{customer_id}", response_model=CustomerOut)

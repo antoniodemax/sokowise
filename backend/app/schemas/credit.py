@@ -69,3 +69,23 @@ class DebtorOut(BaseModel):
     balance: Decimal
     credit_limit: Decimal | None
     oldest_unpaid_charge_at: datetime | None
+
+
+class BalanceRecomputeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # False = report only; True = rewrite every cached balance that disagrees with the ledger.
+    apply: bool = False
+
+
+class BalanceDiscrepancyOut(BaseModel):
+    customer_id: uuid.UUID
+    cached_balance: Decimal
+    ledger_balance: Decimal
+    repaired: bool
+
+
+class BalanceRecomputeResponse(BaseModel):
+    customers_checked: int
+    discrepancies: list[BalanceDiscrepancyOut]
+    applied: bool

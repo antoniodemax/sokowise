@@ -24,6 +24,7 @@ import hashlib
 import json
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -32,6 +33,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analytics.periods import Period
 from app.core.context import BusinessContext, ClientInfo
 from app.core.errors import AppError, ConflictError, NotFoundError, PermissionDeniedError
 from app.db.session import transaction
@@ -163,6 +165,15 @@ async def create_sale(
     try:
         async with transaction(session):
             sale = await _create_sale(session, ctx, data, client, idempotency_key, digest)
+    except _DuplicateAfterLockError:
+        # The transaction rolled back without writing; re-read the winner in the fresh
+        # transaction (the row seen under the lock belongs to the rolled-back one).
+        existing = await sales_repo.get_sale_by_idempotency_key(
+            session, business_id=ctx.business_id, idempotency_key=idempotency_key
+        )
+        if existing is None:  # pragma: no cover — it was committed a moment ago
+            raise
+        return _replay(existing, digest)
     except IntegrityError as exc:
         if _IDEMPOTENCY_CONSTRAINT not in str(exc.orig):
             raise
@@ -178,6 +189,10 @@ async def create_sale(
         extra={"business_id": str(ctx.business_id), "sale_id": str(sale.id)},
     )
     return CreatedSale(sale=sale, created=True)
+
+
+class _DuplicateAfterLockError(Exception):
+    """Raised inside the sale transaction when the same key was committed meanwhile."""
 
 
 def _replay(existing: Sale, digest: str) -> CreatedSale:
@@ -203,6 +218,13 @@ async def _create_sale(
         if data.customer_id is not None
         else None
     )
+    # A concurrent duplicate that committed while we waited for the locks is a replay,
+    # not a second attempt that could now fail a stock or credit-limit check (FR-F6).
+    duplicate = await sales_repo.get_sale_by_idempotency_key(
+        session, business_id=ctx.business_id, idempotency_key=idempotency_key
+    )
+    if duplicate is not None:
+        raise _DuplicateAfterLockError
 
     # Prices and totals from the locked rows (FR-F3, FR-F5, BR-9).
     unit_prices: list[Decimal] = []
@@ -367,6 +389,14 @@ async def list_sales(
     customer_id: uuid.UUID | None,
     limit: int,
 ) -> list[Sale]:
+    # A filter naming another business's customer is a cross-tenant miss (404), not [].
+    if customer_id is not None and (
+        await customer_repo.get_customer(
+            session, business_id=ctx.business_id, customer_id=customer_id
+        )
+        is None
+    ):
+        raise NotFoundError("Customer not found")
     created_by, staff_from = _staff_view(ctx)
     sold_from = date_from
     if staff_from is not None and (sold_from is None or sold_from < staff_from):
@@ -468,3 +498,32 @@ async def void_sale(
         await session.refresh(sale, attribute_names=["updated_at"])
     logger.info("sale voided", extra={"business_id": str(ctx.business_id), "sale_id": str(sale.id)})
     return sale
+
+
+@dataclass(frozen=True, slots=True)
+class ExportSale:
+    sale: Sale
+    customer_name: str | None
+
+
+async def iter_export(
+    session: AsyncSession, ctx: BusinessContext, *, period: Period | None
+) -> AsyncIterator[ExportSale]:
+    """OWNER export (PRD NFR-12): every sale, voided included, oldest first, in keyset batches."""
+    after: tuple[datetime, uuid.UUID] | None = None
+    while True:
+        batch = await sales_repo.export_batch(
+            session,
+            ctx.business_id,
+            sold_from=period.start if period else None,
+            sold_until=period.end if period else None,
+            after=after,
+        )
+        names = await customer_repo.names_for(
+            session, ctx.business_id, {s.customer_id for s in batch if s.customer_id}
+        )
+        for sale in batch:
+            yield ExportSale(sale, names.get(sale.customer_id) if sale.customer_id else None)
+        if len(batch) < sales_repo.EXPORT_BATCH:
+            return
+        after = (batch[-1].sold_at, batch[-1].id)

@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router'
 
 import { BackLink } from '@/components/ui/back-link'
 import { Badge } from '@/components/ui/badge'
+import { When } from '@/components/ui/when'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/error-state'
@@ -11,7 +12,6 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth-context'
-import { formatDateTime } from '@/lib/dates'
 import { formatKsh } from '@/lib/money'
 
 import type { LedgerEntryType } from './api'
@@ -32,7 +32,7 @@ export default function CustomerDetailPage() {
   const [dialog, setDialog] = useState<'repay' | 'adjust' | null>(null)
 
   if (customer.isPending) return <div className="space-y-4"><Skeleton className="h-8 w-64" /><Skeleton className="h-32" /></div>
-  if (customer.isError) return <ErrorState error={customer.error} title="Could not load this customer" onRetry={() => customer.refetch()} />
+  if (customer.isError) return <><BackLink to="/customers">All customers</BackLink><ErrorState error={customer.error} title="Could not load this customer" onRetry={() => customer.refetch()} /></>
   const c = customer.data
   const owes = Number(c.balance) > 0
 
@@ -95,20 +95,22 @@ export default function CustomerDetailPage() {
                   <TableHead>When</TableHead>
                   <TableHead>What</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Owed after</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Owed after</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {ledger.data.entries.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(entry.occurred_at, tz)}</TableCell>
+                    <TableCell className="text-muted-foreground"><When iso={entry.occurred_at} timeZone={tz} /></TableCell>
                     <TableCell>
                       <Badge variant={ENTRY_TONE[entry.entry_type]}>{ENTRY_LABELS[entry.entry_type]}</Badge>
                       {(entry.payment_method || entry.reference || entry.reason) && <span className="mt-1 block text-xs text-muted-foreground">{[entry.payment_method === 'MPESA' ? 'M-Pesa' : entry.payment_method === 'CASH' ? 'Cash' : null, entry.reference, entry.reason].filter(Boolean).join(' · ')}</span>}
                       {entry.sale_id && <Link to={`/sales/${entry.sale_id}`} className="mt-1 block text-xs text-primary hover:underline">View sale</Link>}
                     </TableCell>
-                    <TableCell className={`tabular text-right font-medium ${entry.amount.startsWith('-') ? 'text-success' : 'text-warning'}`}>{entry.amount.startsWith('-') ? '−' : '+'}{formatKsh(entry.amount.replace('-', ''), { bare: true })}</TableCell>
-                    <TableCell className="tabular text-right">{formatKsh(entry.balance_after)}</TableCell>
+                    <TableCell className={`tabular text-right font-medium ${entry.amount.startsWith('-') ? 'text-success' : 'text-warning'}`}>{entry.amount.startsWith('-') ? '−' : '+'}{formatKsh(entry.amount.replace('-', ''), { bare: true })}
+                      <span className="block text-xs font-normal text-muted-foreground sm:hidden">owes {formatKsh(entry.balance_after)}</span>
+                    </TableCell>
+                    <TableCell className="tabular hidden text-right sm:table-cell">{formatKsh(entry.balance_after)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

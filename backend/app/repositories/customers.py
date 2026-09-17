@@ -7,8 +7,9 @@ prefix of the phone number, both parameterised, LIKE wildcards escaped.
 
 import re
 import uuid
+from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -91,3 +92,42 @@ async def get_customer_for_update(
         .with_for_update()
     )
     return result.one_or_none()
+
+
+async def list_customer_ids(session: AsyncSession, business_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every customer of the business (archived included), for the balance recompute."""
+    result = await session.scalars(
+        select(Customer.id).where(Customer.business_id == business_id).order_by(Customer.id)
+    )
+    return list(result)
+
+
+async def names_for(
+    session: AsyncSession, business_id: uuid.UUID, customer_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    if not customer_ids:
+        return {}
+    rows = await session.execute(
+        select(Customer.id, Customer.name).where(
+            Customer.business_id == business_id, Customer.id.in_(customer_ids)
+        )
+    )
+    return {row.id: row.name for row in rows}
+
+
+EXPORT_BATCH = 500
+
+
+async def export_batch(
+    session: AsyncSession,
+    business_id: uuid.UUID,
+    *,
+    after: tuple[datetime, uuid.UUID] | None,
+    batch: int = EXPORT_BATCH,
+) -> list[Customer]:
+    """One keyset page, oldest first, for the CSV export (never the whole table at once)."""
+    stmt = select(Customer).where(Customer.business_id == business_id)
+    if after is not None:
+        stmt = stmt.where(tuple_(Customer.created_at, Customer.id) > after)
+    stmt = stmt.order_by(Customer.created_at.asc(), Customer.id.asc()).limit(batch)
+    return list(await session.scalars(stmt))
