@@ -289,7 +289,7 @@ export default function HomePage() {
           </nav>
         </div>
         <div className="border-t border-border">
-          <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs text-muted-foreground sm:px-6">© {new Date().getFullYear()} SokoWise. Kenya. · Photos via <a href="https://unsplash.com/license" className="underline hover:text-foreground">Unsplash</a>.</p>
+          <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs text-muted-foreground sm:px-6">© {new Date().getFullYear()} SokoWise. Kenya.</p>
         </div>
       </footer>
     </div>

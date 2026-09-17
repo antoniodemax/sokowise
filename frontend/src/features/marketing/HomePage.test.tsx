@@ -82,6 +82,5 @@ describe('HomePage', () => {
       expect(photo).toHaveAttribute('srcset')
       expect(photo.getAttribute('src')).toMatch(/^\/marketing\/.+\.webp$/)
     }
-    expect(screen.getByRole('link', { name: 'Unsplash' })).toHaveAttribute('href', 'https://unsplash.com/license')
   })
 })
