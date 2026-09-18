@@ -14,9 +14,9 @@ const PRESETS: { value: AnalyticsPeriod; label: string }[] = [
 export function PeriodPicker({ value, onChange }: { value: PeriodParams; onChange: (value: PeriodParams) => void }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <div role="radiogroup" aria-label="Period" className="flex w-full gap-1 overflow-x-auto rounded-lg border border-border bg-card p-1 sm:w-auto">
+      <div role="radiogroup" aria-label="Period" className="grid w-full grid-cols-3 gap-1 rounded-lg border border-border bg-card p-1 sm:flex sm:w-auto">
         {PRESETS.map((preset) => (
-          <button key={preset.value} type="button" role="radio" aria-checked={value.period === preset.value} onClick={() => onChange(preset.value === 'custom' ? { period: 'custom', date_from: value.date_from, date_to: value.date_to } : { period: preset.value })} className={cn('min-h-11 flex-1 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors sm:min-h-9 sm:flex-none', value.period === preset.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+          <button key={preset.value} type="button" role="radio" aria-checked={value.period === preset.value} onClick={() => onChange(preset.value === 'custom' ? { period: 'custom', date_from: value.date_from, date_to: value.date_to } : { period: preset.value })} className={cn('min-h-10 rounded-md px-1 text-[13px] font-medium whitespace-nowrap transition-colors sm:min-h-9 sm:px-3 sm:text-sm', value.period === preset.value ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
             {preset.label}
           </button>
         ))}

@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth-context'
 import { formatKsh, formatQuantity } from '@/lib/money'
+import { cn } from '@/lib/utils'
 import { useDebouncedValue } from '@/lib/use-debounce'
 
 import { CategoriesDialog } from './CategoriesDialog'
@@ -106,7 +107,7 @@ export default function ProductsPage() {
                 </TableCell>
                 <TableCell className="tabular text-right">{formatKsh(product.selling_price)}</TableCell>
                 {isOwner && <TableCell className="tabular hidden text-right text-muted-foreground md:table-cell">{product.cost_price ? formatKsh(product.cost_price) : '—'}</TableCell>}
-                <TableCell className="tabular text-right">{product.track_inventory ? `${formatQuantity(product.stock_quantity)} ${product.unit}` : '—'}</TableCell>
+                <TableCell className={cn('tabular text-right', product.is_active && product.track_inventory && Number(product.stock_quantity) <= 0 && 'font-medium text-destructive', product.is_active && product.track_inventory && Number(product.stock_quantity) > 0 && product.low_stock_threshold !== null && Number(product.stock_quantity) <= Number(product.low_stock_threshold) && 'font-medium text-warning')}>{product.track_inventory ? `${formatQuantity(product.stock_quantity)} ${product.unit}` : '—'}</TableCell>
                 <TableCell className="hidden sm:table-cell">{product.is_active ? <StockBadge product={product} /> : <Badge variant="neutral">Archived</Badge>}</TableCell>
               </TableRow>
             ))}

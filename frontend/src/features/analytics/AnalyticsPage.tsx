@@ -65,9 +65,9 @@ export default function AnalyticsPage() {
             </Alert>
           )}
           <Metrics summary={summary.data} />
-          <div className="grid gap-4 text-sm sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-3 text-sm sm:gap-4">
             {(['CASH', 'MPESA', 'CREDIT'] as const).map((m) => (
-              <Card key={m}><CardContent className="p-4"><p className="text-muted-foreground">{m === 'CASH' ? 'Sold for cash' : m === 'MPESA' ? 'Sold via M-Pesa' : 'Sold on credit'}</p><p className="tabular mt-1 text-lg font-semibold">{formatKsh(summary.data.tender_split[m] ?? '0')}</p>{m === 'CREDIT' && <p className="text-xs text-muted-foreground">Owed to you, not cash received</p>}</CardContent></Card>
+              <Card key={m}><CardContent className="p-3 sm:p-4"><p className="text-xs text-muted-foreground sm:text-sm">{m === 'CASH' ? 'Sold for cash' : m === 'MPESA' ? 'Sold via M-Pesa' : 'Sold on credit'}</p><p className="tabular mt-1 text-base font-semibold sm:text-lg">{formatKsh(summary.data.tender_split[m] ?? '0')}</p>{m === 'CREDIT' && <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground sm:text-xs">Owed to you, not cash received</p>}</CardContent></Card>
             ))}
           </div>
 

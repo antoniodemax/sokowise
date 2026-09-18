@@ -48,13 +48,13 @@ function MessageBubble({ message, timezone, conversationId, onProposal }: { mess
           <Sparkles className="size-4" />
         </span>
       )}
-      <div className={cn('max-w-[85%] rounded-2xl px-4 py-3 text-sm', mine ? 'bg-primary text-primary-foreground' : 'border border-border bg-card')}>
+      <div className={cn('anim-rise max-w-[85%] px-4 py-3 text-sm', mine ? 'rounded-2xl rounded-br-md bg-primary text-primary-foreground' : 'rounded-2xl rounded-bl-md border border-border bg-card shadow-xs')}>
         <p className="sr-only">{mine ? 'You' : 'Copilot'}:</p>
         <p className="whitespace-pre-wrap">{message.content}</p>
         {!mine && message.stop_reason === 'max_tokens' && <p className="mt-2 text-xs text-warning">This answer was cut short. Ask a narrower question for the rest.</p>}
         {!mine && checked.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Checked: {checked.join(', ')} · figures come from your records</p>}
         {!mine && message.proposal && conversationId && <ProposalCard conversationId={conversationId} messageId={message.id} proposal={message.proposal} onResult={onProposal} />}
-        <p className="mt-1 text-[11px] opacity-70">{formatDateTime(message.created_at, timezone)}</p>
+        <p className={cn('mt-1.5 text-[11px]', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>{formatDateTime(message.created_at, timezone)}</p>
       </div>
     </li>
   )
@@ -188,7 +188,7 @@ export default function AssistantPage() {
                 <ul className="mt-4 grid gap-2 sm:grid-cols-2">
                   {EXAMPLE_QUESTIONS.map((q) => (
                     <li key={q}>
-                      <button type="button" onClick={() => send(q)} disabled={ask.isPending || quotaExhausted} className="w-full rounded-lg border border-border bg-card px-3 py-3 text-left text-sm hover:border-primary hover:bg-primary-soft disabled:opacity-50">
+                      <button type="button" onClick={() => send(q)} disabled={ask.isPending || quotaExhausted} className="w-full rounded-lg border border-border bg-card px-3 py-3 text-left text-sm transition-colors hover:border-primary hover:bg-primary-soft disabled:opacity-50">
                         {q}
                       </button>
                     </li>

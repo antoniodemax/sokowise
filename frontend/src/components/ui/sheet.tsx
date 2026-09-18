@@ -14,16 +14,16 @@ export const SheetDescription = DialogPrimitive.Description
 export function SheetContent({ className, children, ...props }: ComponentProps<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-secondary/50" />
+      <DialogPrimitive.Overlay className="anim-fade fixed inset-0 z-50 bg-secondary/40" />
       <DialogPrimitive.Content
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-[min(20rem,85vw)] flex-col border-r border-border bg-card shadow-lg data-[state=open]:animate-in data-[state=open]:slide-in-from-left',
+          'anim-slide-left fixed inset-y-0 left-0 z-50 flex w-[min(20rem,85vw)] flex-col border-r border-border bg-card shadow-lg',
           className,
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute top-3 right-3 rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+        <DialogPrimitive.Close className="absolute top-3 right-3 inline-flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
           <X className="size-5" aria-hidden="true" />
           <span className="sr-only">Close menu</span>
         </DialogPrimitive.Close>

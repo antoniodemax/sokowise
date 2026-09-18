@@ -12,10 +12,10 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth-context'
+import { cn } from '@/lib/utils'
 import { formatKsh } from '@/lib/money'
 
 import type { LedgerEntryType } from './api'
-import { BalanceBadge } from './BalanceBadge'
 import { useCustomer, useLedger } from './hooks'
 import { AdjustmentDialog, RepaymentDialog } from './LedgerDialogs'
 
@@ -49,16 +49,16 @@ export default function CustomerDetailPage() {
           </>
         }
       />
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className={owes ? 'border-warning/40' : undefined}>
-          <CardContent className="p-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+        <Card className={cn('col-span-2 md:col-span-1', owes ? 'border-warning/40 bg-warning-soft/30' : 'border-primary/30 bg-primary-soft/40')}>
+          <CardContent className="p-4 sm:p-5">
             <p className="text-sm text-muted-foreground">{owes ? 'Owes you' : Number(c.balance) < 0 ? 'Credit in their favour' : 'Balance'}</p>
             <p className={`tabular mt-1 text-2xl font-semibold ${owes ? 'text-warning' : ''}`}>{formatKsh(c.balance.replace('-', ''))}</p>
-            <div className="mt-2">{<BalanceBadge balance={c.balance} />}</div>
+            <p className="mt-1 text-xs text-muted-foreground">{owes ? 'Credit sales minus what they have paid back' : Number(c.balance) < 0 ? 'They paid more than they owed' : 'Nothing owed right now'}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <p className="text-sm text-muted-foreground">Credit limit</p>
             <p className="tabular mt-1 text-2xl font-semibold">{c.credit_limit === null ? 'No limit' : formatKsh(c.credit_limit)}</p>
             {c.credit_limit !== null && Number(c.credit_limit) > 0 && (
@@ -70,7 +70,7 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <p className="text-sm text-muted-foreground">Notes</p>
             <p className="mt-1 text-sm">{c.notes ?? <span className="text-muted-foreground">—</span>}</p>
           </CardContent>

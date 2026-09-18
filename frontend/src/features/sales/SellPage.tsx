@@ -155,7 +155,17 @@ export default function SellPage() {
       <BackLink to="/sales">Back to sales</BackLink>
       <PageHeader title="New sale" description="Add items, take payment, done." />
       {fromMpesa && <Alert className="mb-4" role="status">From an M-Pesa message: {formatKsh(fromMpesa.amount)} received, code {fromMpesa.code}. Add the items that were sold.</Alert>}
-      <form onSubmit={(e) => { e.preventDefault(); if (canSubmit && !mutation.isPending) submit() }} noValidate className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+      <form onSubmit={(e) => { e.preventDefault(); if (canSubmit && !mutation.isPending) submit() }} noValidate className="grid gap-4 pb-24 lg:grid-cols-[3fr_2fr] lg:pb-0">
+        {/* Phones: the total and the one action stay reachable while the cart grows. */}
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-4 py-3 backdrop-blur [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
+          <div className="mx-auto flex max-w-6xl items-center gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{lines.length === 0 ? 'No items yet' : `${lines.length} ${lines.length === 1 ? 'item' : 'items'} · ${tender.remaining === 0 ? 'fully paid' : tender.remaining === null ? 'check amounts' : tender.remaining > 0 ? 'still to pay' : 'over paid'}`}</p>
+              <p className="tabular text-lg font-semibold">{totals.total === null || totals.total < 0 ? '—' : formatKsh(fromCents(totals.total))}</p>
+            </div>
+            <Button type="submit" size="lg" className="ml-auto" disabled={!canSubmit} loading={mutation.isPending}>Record sale</Button>
+          </div>
+        </div>
         <div className="space-y-4">
           <Card>
             <CardHeader><CardTitle>Items</CardTitle></CardHeader>
@@ -206,10 +216,12 @@ export default function SellPage() {
               )}
               {serverError && <Alert variant="destructive" role="alert">{serverError}</Alert>}
               {needsCustomer && <p className="text-sm text-destructive" role="alert">Credit sales need a customer.</p>}
-              <Button type="submit" size="lg" className="w-full" disabled={!canSubmit} loading={mutation.isPending}>
-                {totals.total === null || totals.total < 0 ? 'Record sale' : `Record sale · ${formatKsh(fromCents(totals.total))}`}
-              </Button>
-              <p className="text-center text-xs text-muted-foreground">Sales cannot be edited afterwards; the owner can void one by mistake.</p>
+              <div className="hidden lg:block">
+                <Button type="submit" size="lg" className="w-full" disabled={!canSubmit} loading={mutation.isPending}>
+                  {totals.total === null || totals.total < 0 ? 'Record sale' : `Record sale · ${formatKsh(fromCents(totals.total))}`}
+                </Button>
+                <p className="mt-2 text-center text-xs text-muted-foreground">Sales cannot be edited afterwards; the owner can void one by mistake.</p>
+              </div>
             </CardContent>
           </Card>
         </div>

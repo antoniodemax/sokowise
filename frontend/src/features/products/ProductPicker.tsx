@@ -43,7 +43,7 @@ export function ProductPicker({ onPick, trackedOnly, autoFocus, placeholder = 'S
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      <ul id={listId} role="listbox" aria-label="Matching products" className="max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-card">
+      <ul id={listId} role="listbox" aria-label="Matching products" className="max-h-56 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-card sm:max-h-64">
         {products.isPending && (showAll || debounced) ? (
           <li className="px-3 py-3 text-sm text-muted-foreground">Searching…</li>
         ) : rows.length === 0 ? (
@@ -53,7 +53,7 @@ export function ProductPicker({ onPick, trackedOnly, autoFocus, placeholder = 'S
         ) : (
           rows.map((product) => (
             <li key={product.id} role="option" aria-selected={false}>
-              <button type="button" onClick={() => { onPick(product); setQuery('') }} className={cn('flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted focus-visible:bg-muted')}>
+              <button type="button" onClick={() => { onPick(product); setQuery('') }} className={cn('flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:bg-muted active:bg-primary-soft')}>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{product.name}</span>
                   <span className="block text-xs text-muted-foreground">

@@ -77,4 +77,27 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
   }
+  /* Form controls draw their focus as a ring inside the border instead of an outline. */
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    @apply outline-none border-ring ring-2 ring-ring/20;
+  }
+}
+
+/* Motion: short, purposeful, and off for people who asked for reduced motion. */
+@layer utilities {
+  @keyframes sw-fade-in { from { opacity: 0 } to { opacity: 1 } }
+  /* Only scale and opacity: the dialog is centred with the `translate` property, which composes with transform. */
+  @keyframes sw-pop-in { from { opacity: 0; transform: scale(0.97) } to { opacity: 1; transform: scale(1) } }
+  @keyframes sw-slide-in-left { from { transform: translateX(-100%) } to { transform: translateX(0) } }
+  @keyframes sw-drop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98) } to { opacity: 1; transform: translateY(0) scale(1) } }
+  @keyframes sw-rise-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+  .anim-fade { animation: sw-fade-in 150ms ease-out both; }
+  .anim-pop { animation: sw-pop-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+  .anim-slide-left { animation: sw-slide-in-left 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+  .anim-drop { animation: sw-drop-in 140ms ease-out backwards; }
+  /* "backwards", not "both": a retained transform would turn the page into the containing block for fixed bars. */
+  .anim-rise { animation: sw-rise-in 200ms ease-out backwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .anim-fade, .anim-pop, .anim-slide-left, .anim-drop, .anim-rise { animation: none; }
+  }
 }

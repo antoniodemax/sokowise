@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Banknote, HandCoins, Package, Plus, Receipt, ShoppingCart, Smartphone, Sparkles, TrendingUp, UserRound, Wallet } from 'lucide-react'
+import { AlertTriangle, Banknote, HandCoins, Package, Plus, ShoppingCart, Smartphone, Sparkles, TrendingUp, UserRound } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -30,7 +30,7 @@ const PERIODS: { value: DashboardPeriod; label: string }[] = [
 
 function PeriodControl({ value, onChange }: { value: DashboardPeriod; onChange: (value: DashboardPeriod) => void }) {
   return (
-    <div role="radiogroup" aria-label="Period" className="flex w-full gap-1 overflow-x-auto rounded-lg border border-border bg-card p-1 sm:w-auto">
+    <div role="radiogroup" aria-label="Period" className="grid w-full grid-cols-4 gap-1 rounded-lg border border-border bg-card p-1 sm:flex sm:w-auto">
       {PERIODS.map((period) => (
         <button
           key={period.value}
@@ -39,8 +39,8 @@ function PeriodControl({ value, onChange }: { value: DashboardPeriod; onChange: 
           aria-checked={value === period.value}
           onClick={() => onChange(period.value)}
           className={cn(
-            'min-h-11 flex-1 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors sm:min-h-9 sm:flex-none',
-            value === period.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            'min-h-10 rounded-md px-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:min-h-9 sm:px-3 sm:text-sm',
+            value === period.value ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
         >
           {period.label}
@@ -56,30 +56,65 @@ interface MetricCardProps {
   icon: ReactNode
   hint?: string
   tone?: 'default' | 'positive' | 'negative'
+  /** The one figure to read first: a tinted card. */
+  emphasis?: boolean
+  className?: string
 }
 
 /** The dashboard's metric pattern: label, one big figure, a one-line explanation. */
-export function MetricCard({ label, value, icon, hint, tone = 'default' }: MetricCardProps) {
+export function MetricCard({ label, value, icon, hint, tone = 'default', emphasis, className }: MetricCardProps) {
   return (
-    <Card>
-      <CardContent className="p-5">
+    <Card className={cn(emphasis && 'border-primary/30 bg-primary-soft/40', className)}>
+      <CardContent className="p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <span className="flex size-9 items-center justify-center rounded-lg bg-primary-soft text-primary [&_svg]:size-5" aria-hidden="true">
+          <p className="line-clamp-2 text-[13px] leading-tight font-medium text-muted-foreground sm:text-sm">{label}</p>
+          <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg [&_svg]:size-4', emphasis ? 'bg-primary text-primary-foreground' : 'bg-primary-soft text-primary')} aria-hidden="true">
             {icon}
           </span>
         </div>
-        <p className={cn('tabular mt-3 text-2xl font-semibold tracking-tight', tone === 'positive' && 'text-success', tone === 'negative' && 'text-destructive')}>{value}</p>
-        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+        <p className={cn('tabular mt-2 text-xl font-semibold tracking-tight sm:mt-3 sm:text-2xl', tone === 'positive' && 'text-success', tone === 'negative' && 'text-destructive')}>{value}</p>
+        {hint && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
   )
 }
 
-function MetricSkeleton() {
+/** Profit before costs − costs = profit, read as one line instead of three unrelated boxes. */
+function ProfitCard({ summary, className }: { summary: AnalyticsSummary; className?: string }) {
+  const negative = summary.net_profit.startsWith('-')
+  const missing = summary.lines_missing_cost > 0
+  const cell = (glyph: string | null, label: string, value: string, hint: string, tone?: 'negative' | 'positive') => (
+    <div className="flex min-w-0 items-center justify-between gap-3 sm:block">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-muted-foreground sm:text-sm">
+          {glyph && <span className="mr-1.5 sm:hidden" aria-hidden="true">{glyph}</span>}
+          {label}
+        </p>
+        <p className="line-clamp-2 text-xs text-muted-foreground sm:hidden">{hint}</p>
+      </div>
+      <p className={cn('tabular shrink-0 text-lg font-semibold tracking-tight sm:mt-1 sm:text-2xl', tone === 'negative' && 'text-destructive', tone === 'positive' && 'text-success')}>{value}</p>
+      <p className="mt-0.5 hidden line-clamp-2 text-xs text-muted-foreground sm:block">{hint}</p>
+    </div>
+  )
+  const op = (glyph: string) => <span className="hidden self-center pb-4 text-lg text-muted-foreground/70 sm:block" aria-hidden="true">{glyph}</span>
   return (
-    <Card>
-      <CardContent className="space-y-3 p-5">
+    <Card className={className}>
+      <CardContent className="grid gap-3 divide-y divide-border p-4 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-start sm:gap-4 sm:divide-y-0 sm:p-5 [&>div+div]:pt-3 sm:[&>div+div]:pt-0">
+        {cell(null, 'Profit before costs', formatKsh(summary.gross_profit), missing ? `${summary.lines_missing_cost} sale ${summary.lines_missing_cost === 1 ? 'line has' : 'lines have'} no cost price yet` : `Goods cost you ${formatKsh(summary.cogs)}`)}
+        {op('−')}
+        {cell('−', 'Matumizi (costs)', formatKsh(summary.expenses), 'Money spent in this period')}
+        {op('=')}
+        {cell('=', 'Profit', formatKsh(summary.net_profit), 'After your costs', negative ? 'negative' : 'positive')}
+      </CardContent>
+    </Card>
+  )
+}
+
+
+function MetricSkeleton({ className }: { className?: string }) {
+  return (
+    <Card className={className}>
+      <CardContent className="space-y-3 p-4 sm:p-5">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-32" />
         <Skeleton className="h-3 w-40" />
@@ -89,26 +124,22 @@ function MetricSkeleton() {
 }
 
 export function Metrics({ summary }: { summary: AnalyticsSummary }) {
-  const net = summary.net_profit.startsWith('-') ? 'negative' : 'positive'
-  const missing = summary.lines_missing_cost > 0
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <MetricCard label="Sold" value={formatKsh(summary.revenue)} icon={<TrendingUp />} hint={`${summary.sales_count} ${summary.sales_count === 1 ? 'sale' : 'sales'} · includes deni sales`} />
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+      <MetricCard emphasis className="col-span-2 lg:col-span-1" label="Sold" value={formatKsh(summary.revenue)} icon={<TrendingUp />} hint={`${summary.sales_count} ${summary.sales_count === 1 ? 'sale' : 'sales'} · includes deni sales`} />
       <MetricCard label="In your pocket" value={formatKsh(summary.cash_collected_total)} icon={<Banknote />} hint={`Cash ${formatKsh(summary.cash_collected.CASH ?? '0')} · M-Pesa ${formatKsh(summary.cash_collected.MPESA ?? '0')}`} />
       <MetricCard label="Deni (owed to you)" value={formatKsh(summary.receivables_outstanding)} icon={<HandCoins />} hint="Customers still to pay" />
-      <MetricCard label="Profit before costs" value={formatKsh(summary.gross_profit)} icon={<Wallet />} hint={missing ? `${summary.lines_missing_cost} sale ${summary.lines_missing_cost === 1 ? 'line has' : 'lines have'} no cost price yet` : `After cost of goods ${formatKsh(summary.cogs)}`} />
-      <MetricCard label="Matumizi (costs)" value={formatKsh(summary.expenses)} icon={<Receipt />} hint="Money spent in this period" />
-      <MetricCard label="Profit" value={formatKsh(summary.net_profit)} icon={<ShoppingCart />} hint="After your costs" tone={net} />
+      <ProfitCard summary={summary} className="col-span-2 lg:col-span-3" />
     </div>
   )
 }
 
 function QuickActions() {
   return (
-    <div className="flex flex-wrap gap-2" aria-label="Quick actions">
-      <Link to="/sales/new" className={buttonVariants()}><ShoppingCart aria-hidden="true" /> New sale</Link>
-      <Link to="/products" className={buttonVariants({ variant: 'outline' })}><Package aria-hidden="true" /> Products</Link>
-      <Link to="/customers" className={buttonVariants({ variant: 'outline' })}><UserRound aria-hidden="true" /> Customers</Link>
+    <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" aria-label="Quick actions">
+      <Link to="/sales/new" className={cn(buttonVariants(), 'px-2 sm:px-4')}><ShoppingCart aria-hidden="true" /> New sale</Link>
+      <Link to="/products" className={cn(buttonVariants({ variant: 'outline' }), 'px-2 sm:px-4')}><Package aria-hidden="true" /> Products</Link>
+      <Link to="/customers" className={cn(buttonVariants({ variant: 'outline' }), 'px-2 sm:px-4')}><UserRound aria-hidden="true" /> Customers</Link>
     </div>
   )
 }
@@ -131,14 +162,16 @@ function LowStockCard() {
         ) : (
           <ul className="divide-y divide-border text-sm">
             {lowStock.data.slice(0, 6).map((p) => (
-              <li key={p.product_id} className="flex items-center justify-between gap-3 py-2">
-                <Link to={`/products/${p.product_id}`} className="min-w-0 truncate font-medium hover:underline">{p.name}</Link>
-                <span className="tabular shrink-0 text-warning">{formatQuantity(p.stock_quantity)} {p.unit} left</span>
+              <li key={p.product_id}>
+                <Link to={`/products/${p.product_id}`} className="-mx-2 flex min-h-11 items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-muted">
+                  <span className="min-w-0 truncate font-medium">{p.name}</span>
+                  <span className="tabular shrink-0 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">{formatQuantity(p.stock_quantity)} {p.unit} left</span>
+                </Link>
               </li>
             ))}
           </ul>
         )}
-        {lowStock.data && lowStock.data.length > 6 && <Link to="/inventory" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">See all {lowStock.data.length}</Link>}
+        {lowStock.data && lowStock.data.length > 6 && <Link to="/inventory" className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">See all {lowStock.data.length}</Link>}
       </CardContent>
     </Card>
   )
@@ -177,13 +210,13 @@ function MpesaCard({ timeZone }: { timeZone: string }) {
         ) : summary.isError ? (
           <ErrorState error={summary.error} title="Could not load M-Pesa" onRetry={() => summary.refetch()} />
         ) : (
-          <dl className="grid grid-cols-3 gap-2 text-sm">
-            <div><dt className="text-muted-foreground">Received</dt><dd className="font-semibold">{formatKsh(summary.data.received_total)}</dd></div>
-            <div><dt className="text-muted-foreground">Recorded</dt><dd className="font-semibold">{formatKsh(summary.data.matched_total)}</dd></div>
-            <div><dt className="text-muted-foreground">Not recorded</dt><dd className={cn('font-semibold', summary.data.unmatched_count > 0 && 'text-warning')}>{summary.data.unmatched_count}</dd></div>
+          <dl className="grid grid-cols-3 gap-3 text-sm">
+            <div className="rounded-lg bg-muted/60 px-3 py-2"><dt className="text-xs text-muted-foreground">Received</dt><dd className="tabular mt-0.5 font-semibold">{formatKsh(summary.data.received_total)}</dd></div>
+            <div className="rounded-lg bg-muted/60 px-3 py-2"><dt className="text-xs text-muted-foreground">Recorded</dt><dd className="tabular mt-0.5 font-semibold">{formatKsh(summary.data.matched_total)}</dd></div>
+            <div className={cn('rounded-lg px-3 py-2', summary.data.unmatched_count > 0 ? 'bg-warning-soft' : 'bg-muted/60')}><dt className="text-xs text-muted-foreground">Not recorded</dt><dd className={cn('tabular mt-0.5 font-semibold', summary.data.unmatched_count > 0 && 'text-warning')}>{summary.data.unmatched_count}</dd></div>
           </dl>
         )}
-        <Link to="/mpesa" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">Add or check messages</Link>
+        <Link to="/mpesa" className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">Add or check messages</Link>
       </CardContent>
     </Card>
   )
@@ -208,14 +241,16 @@ function DebtorsCard() {
         ) : (
           <ul className="divide-y divide-border text-sm">
             {debtors.data.slice(0, 5).map((d) => (
-              <li key={d.customer_id} className="flex items-center justify-between gap-3 py-2">
-                <Link to={`/customers/${d.customer_id}`} className="min-w-0 truncate font-medium hover:underline">{d.name}</Link>
-                <span className="tabular shrink-0 font-semibold text-warning">{formatKsh(d.balance)}</span>
+              <li key={d.customer_id}>
+                <Link to={`/customers/${d.customer_id}`} className="-mx-2 flex min-h-11 items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-muted">
+                  <span className="min-w-0 truncate font-medium">{d.name}</span>
+                  <span className="tabular shrink-0 font-semibold text-warning">{formatKsh(d.balance)}</span>
+                </Link>
               </li>
             ))}
           </ul>
         )}
-        {debtors.data && debtors.data.length > 5 && <Link to="/customers?view=debtors" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">See all {debtors.data.length}</Link>}
+        {debtors.data && debtors.data.length > 5 && <Link to="/customers?view=debtors" className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">See all {debtors.data.length}</Link>}
       </CardContent>
     </Card>
   )
@@ -257,10 +292,11 @@ export default function DashboardPage() {
           <MpesaCard timeZone={tz} />
         </div>
       ) : query.isPending ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading figures">
-          {Array.from({ length: 6 }, (_, i) => (
-            <MetricSkeleton key={i} />
-          ))}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3" aria-busy="true" aria-label="Loading figures">
+          <MetricSkeleton className="col-span-2 lg:col-span-1" />
+          <MetricSkeleton />
+          <MetricSkeleton />
+          <MetricSkeleton className="col-span-2 lg:col-span-3" />
         </div>
       ) : query.isError || !summary ? (
         <ErrorState error={query.error} title="Could not load your figures" onRetry={() => query.refetch()} />
