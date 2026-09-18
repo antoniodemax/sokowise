@@ -177,6 +177,21 @@ class Settings(BaseSettings):
     def blank_key_is_none(cls, value: object) -> object:
         return None if value == "" else value
 
+    @field_validator("africastalking_username", "africastalking_sender_id", "google_client_id")
+    @classmethod
+    def strip_credentials(cls, value: str | None) -> str | None:
+        """Values pasted into a hosting dashboard often carry a stray space or newline, which
+        makes the HTTP client refuse the header (`LocalProtocolError`)."""
+        return value.strip() if value is not None else None
+
+    @field_validator("africastalking_api_key")
+    @classmethod
+    def strip_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        stripped = value.get_secret_value().strip()
+        return SecretStr(stripped) if stripped else None
+
     @model_validator(mode="after")
     def check_sms_provider(self) -> "Settings":
         if self.sms_provider == "africastalking" and not (

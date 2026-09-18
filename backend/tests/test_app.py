@@ -69,6 +69,18 @@ def test_platform_admin_emails_are_split_and_lower_cased(monkeypatch: pytest.Mon
         Settings()
 
 
+def test_sms_credentials_are_stripped_of_pasted_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SMS_PROVIDER", "africastalking")
+    monkeypatch.setenv("AFRICASTALKING_USERNAME", " sandbox\n")
+    monkeypatch.setenv("AFRICASTALKING_API_KEY", "atsk_key \n")
+    monkeypatch.setenv("AFRICASTALKING_SENDER_ID", "")
+    settings = Settings()
+    assert settings.africastalking_username == "sandbox"
+    assert settings.africastalking_api_key is not None
+    assert settings.africastalking_api_key.get_secret_value() == "atsk_key"
+    assert settings.africastalking_sender_id is None
+
+
 def test_production_settings_disable_interactive_docs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
