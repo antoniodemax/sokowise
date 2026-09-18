@@ -16,8 +16,8 @@ from app.notifications.sms import (
 pytestmark = pytest.mark.anyio
 
 
-def _sender(handler: httpx.MockTransport) -> AfricasTalkingSmsSender:
-    sender = AfricasTalkingSmsSender(username="sandbox", api_key="key", sender_id="SOKOWISE")
+def _sender(handler: httpx.MockTransport, username: str = "sokowise") -> AfricasTalkingSmsSender:
+    sender = AfricasTalkingSmsSender(username=username, api_key="key", sender_id="SOKOWISE")
     # Route the client through the stub transport.
     original = httpx.AsyncClient
 
@@ -51,7 +51,7 @@ async def test_accepted_message_posts_the_expected_form() -> None:
     )
     assert seen["url"] == "https://api.africastalking.com/version1/messaging"
     assert seen["apikey"] == "key"
-    assert "username=sandbox" in str(seen["body"]) and "from=SOKOWISE" in str(seen["body"])
+    assert "username=sokowise" in str(seen["body"]) and "from=SOKOWISE" in str(seen["body"])
     assert "to=%2B254712345678" in str(seen["body"])
 
 
@@ -78,3 +78,14 @@ async def test_console_sender_masks_the_phone(caplog: pytest.LogCaptureFixture) 
     record = caplog.records[-1]
     assert getattr(record, "to", None) == "***678" and "+254712345678" not in caplog.text
     assert mask_phone("12") == "***"
+
+
+async def test_the_sandbox_username_uses_the_sandbox_host() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(201, json={"SMSMessageData": {"Recipients": [{"status": "Success"}]}})
+
+    await _sender(httpx.MockTransport(handler), username="sandbox").send("+254712345678", "hi")
+    assert seen["url"] == "https://api.sandbox.africastalking.com/version1/messaging"

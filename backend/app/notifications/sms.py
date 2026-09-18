@@ -16,6 +16,8 @@ from app.core.config import Settings
 logger = logging.getLogger(__name__)
 
 AFRICASTALKING_URL = "https://api.africastalking.com/version1/messaging"
+# The sandbox app (username "sandbox") lives on its own host; messages go to the simulator.
+AFRICASTALKING_SANDBOX_URL = "https://api.sandbox.africastalking.com/version1/messaging"
 SMS_TIMEOUT_SECONDS = 10.0
 
 
@@ -40,12 +42,14 @@ class ConsoleSmsSender:
 
 class AfricasTalkingSmsSender:
     def __init__(
-        self, *, username: str, api_key: str, sender_id: str | None, url: str = AFRICASTALKING_URL
+        self, *, username: str, api_key: str, sender_id: str | None, url: str | None = None
     ) -> None:
         self._username = username
         self._api_key = api_key
         self._sender_id = sender_id
-        self._url = url
+        self._url = url or (
+            AFRICASTALKING_SANDBOX_URL if username == "sandbox" else AFRICASTALKING_URL
+        )
 
     async def send(self, phone: str, text: str) -> None:
         data = {"username": self._username, "to": phone, "message": text}
@@ -92,6 +96,8 @@ def build_sms_sender(settings: Settings) -> SmsSender | None:
 
 
 __all__ = [
+    "AFRICASTALKING_SANDBOX_URL",
+    "AFRICASTALKING_URL",
     "AfricasTalkingSmsSender",
     "ConsoleSmsSender",
     "SmsDeliveryError",
