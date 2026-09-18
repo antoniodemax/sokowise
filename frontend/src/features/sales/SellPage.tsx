@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import type { Customer } from '@/features/customers/api'
 import type { Product } from '@/features/products/api'
+import { productsApi } from '@/features/products/api'
 import { useProducts } from '@/features/products/hooks'
 import { ProductPicker } from '@/features/products/ProductPicker'
 import { ApiError } from '@/lib/api'
@@ -56,9 +57,11 @@ export default function SellPage() {
   const [soldAt, setSoldAt] = useState('')
   const [serverError, setServerError] = useState<string | null>(null)
   // Loose items with no product entry: an untracked product named "Other" (the setup wizard
-  // adds it) takes the description in the note and the amount as the price.
+  // adds it; an owner who skipped the wizard gets it created on first use) takes the
+  // description in the note and the amount as the price.
   const otherLookup = useProducts({ q: 'Other', limit: 5 })
   const otherProduct = otherLookup.data?.find((p) => p.name.toLowerCase() === 'other' && !p.track_inventory) ?? null
+  const canOfferOther = otherProduct !== null || (isOwner && otherLookup.isSuccess)
   const [otherOpen, setOtherOpen] = useState(false)
   const [otherDesc, setOtherDesc] = useState('')
   const [otherAmount, setOtherAmount] = useState('')
@@ -71,11 +74,19 @@ export default function SellPage() {
   const needsCustomer = tender.credit > 0 && !customer
   const canSubmit = lines.length > 0 && totals.total !== null && totals.total >= 0 && tender.remaining === 0 && !needsCustomer
 
+  const ensureOther = useMutation({
+    mutationFn: async () => otherProduct ?? productsApi.create({ name: 'Other', selling_price: '0.00', unit: 'other', track_inventory: false }),
+    onSuccess: (base) => {
+      if (!otherProduct) void queryClient.invalidateQueries({ queryKey: queryKeys.products.all })
+      setLines((current) => [...current, { product: { ...base, name: otherDesc.trim() ? `Other: ${otherDesc.trim()}` : 'Other' }, quantity: '1', unit_price: otherAmount.trim() }])
+      setNote((n) => (otherDesc.trim() ? [n, otherDesc.trim()].filter(Boolean).join('; ') : n))
+      setOtherDesc(''); setOtherAmount(''); setOtherOpen(false); setServerError(null)
+    },
+    onError: (error) => setServerError(describeError(error)),
+  })
   function addOther() {
-    if (!otherProduct || !otherAmount.trim()) return
-    setLines((current) => [...current, { product: { ...otherProduct, name: otherDesc.trim() ? `Other: ${otherDesc.trim()}` : 'Other' }, quantity: '1', unit_price: otherAmount.trim() }])
-    setNote((n) => (otherDesc.trim() ? [n, otherDesc.trim()].filter(Boolean).join('; ') : n))
-    setOtherDesc(''); setOtherAmount(''); setOtherOpen(false)
+    if (!otherAmount.trim()) return
+    ensureOther.mutate()
   }
 
   function addProduct(product: Product) {
@@ -119,7 +130,7 @@ export default function SellPage() {
             return
           case 'INSUFFICIENT_STOCK':
             void queryClient.invalidateQueries({ queryKey: queryKeys.products.all })
-            setServerError(`${error.message} If you do have it in the shop, add the stock first: Inventory → Restock (or set "Stock now" on the product).`)
+            setServerError('Not enough stock for one of the items. If you do have it in the shop, add the stock first: Inventory → Restock (or set "Stock now" on the product).')
             return
           case 'SALE_BACKDATE_WINDOW':
           case 'SALE_IN_FUTURE':
@@ -150,15 +161,15 @@ export default function SellPage() {
             <CardHeader><CardTitle>Items</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <ProductPicker onPick={addProduct} autoFocus placeholder="Search products to add" />
-              {otherProduct && !otherOpen && (
+              {canOfferOther && !otherOpen && (
                 <Button type="button" variant="outline" size="sm" onClick={() => setOtherOpen(true)}>Other item (no product)</Button>
               )}
-              {otherProduct && otherOpen && (
+              {canOfferOther && otherOpen && (
                 <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-3 sm:flex-row sm:items-end">
                   <label className="grid flex-1 gap-1 text-sm"><span className="text-muted-foreground">What was it?</span><Input aria-label="Other item description" value={otherDesc} onChange={(e) => setOtherDesc(e.target.value)} placeholder="e.g. 2 scoops of rice" /></label>
                   <label className="grid gap-1 text-sm"><span className="text-muted-foreground">Amount (KSh)</span><Input aria-label="Other item amount" inputMode="decimal" value={otherAmount} onChange={(e) => setOtherAmount(e.target.value)} className="w-32" /></label>
                   <div className="flex gap-2">
-                    <Button type="button" onClick={addOther} disabled={!/^\d+(\.\d{1,2})?$/.test(otherAmount.trim()) || Number(otherAmount) <= 0}>Add</Button>
+                    <Button type="button" onClick={addOther} loading={ensureOther.isPending} disabled={!/^\d+(\.\d{1,2})?$/.test(otherAmount.trim()) || Number(otherAmount) <= 0}>Add</Button>
                     <Button type="button" variant="ghost" onClick={() => setOtherOpen(false)}>Cancel</Button>
                   </div>
                 </div>

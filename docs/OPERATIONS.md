@@ -8,7 +8,7 @@ hand on the hosting platforms. Every item is labelled:
 - **REQUIRES DEPLOYMENT CONFIGURATION** — must be set up in Railway, Vercel, GitHub or the
   Anthropic console before the pilot; nothing in the repository can do it for you.
 
-Last reviewed: 2026-09-17 (Phase 15 production-hardening audit). No production environment
+Last reviewed: 2026-09-18 (Phase 18c real-world staging check; see `docs/REAL_WORLD_TESTING.md` for what testers are told). No production environment
 exists yet; nothing below has been exercised against a live Railway or Vercel project.
 
 ## 1. Deployment checklist
@@ -49,7 +49,7 @@ migrate-then-serve entrypoint below.
 
 | Item | Value / status |
 |---|---|
-| Frontend | Vercel project `sokowise-staging`, alias `https://sokowise-staging.vercel.app` (per-deployment hash URLs are behind Vercel SSO by default; the alias is public). `VITE_API_BASE_URL`, `VITE_PUBLIC_URL` set in the Vercel *production* environment of that project. |
+| Frontend | Vercel project `sokowise` (root directory `frontend`, Git-connected to `main`), alias `https://sokowise-staging.vercel.app` (per-deployment hash URLs are behind Vercel SSO by default; the alias is public). `VITE_API_BASE_URL`, `VITE_PUBLIC_URL` set in the Vercel *production* environment of that project. |
 | Backend | Render free web service `sokowise-api-staging`, Frankfurt, Docker from `backend/Dockerfile`, `https://sokowise-api-staging.onrender.com`. Definition in `render.yaml` (the Render counterpart of `backend/railway.toml`). |
 | Migrations before traffic | Render free has **no pre-deploy command**, so the Docker command is `/app/scripts/start.sh`: `alembic upgrade head` then `exec uvicorn`. With one instance and the readiness check on `/health/ready` (503 while `migrations: pending`) the ordering guarantee is the same as Railway's `preDeployCommand`. Verified: a brand-new Neon database reached head `7f4db0684dfd` with all 18 tables on first deploy. |
 | Database | Neon free project `sokowise-staging`, Frankfurt, Postgres 18, 0.5 GB, autosuspends when idle, SSL required. `DATABASE_URL` uses `postgresql+asyncpg://…?ssl=require` (Neon prints `sslmode=require&channel_binding=require`; asyncpg wants `ssl=require`). Pool sized `DB_POOL_SIZE=3`, `DB_MAX_OVERFLOW=2`. Isolated from every local database. |

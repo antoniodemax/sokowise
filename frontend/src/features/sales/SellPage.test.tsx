@@ -141,6 +141,31 @@ describe('SellPage opened from an M-Pesa message', () => {
 })
 
 describe('SellPage quick "Other item"', () => {
+  it('does not offer "Other item" to staff when the product does not exist (staff cannot create products)', async () => {
+    mockApi({ 'GET /api/v1/products': () => json([bread]) })
+    renderWithProviders(<SellPage />, { session: staffSession, path: '/sales/new', pattern: '/sales/new' })
+    expect(await screen.findByText('Bread')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Other item (no product)' })).not.toBeInTheDocument()
+  })
+
+  it('creates the untracked Other product on first use when the owner skipped the starter list', async () => {
+    const created = product({ id: 'p-other', name: 'Other', selling_price: '0.00', track_inventory: false, unit: 'other' })
+    const api = mockApi({
+      'GET /api/v1/products': (_init: RequestInit, url: URL) => json(url.searchParams.get('q') === 'Other' ? [] : [bread]),
+      'POST /api/v1/products': () => json(created, 201),
+      'POST /api/v1/sales': () => json(sale({ total_amount: '50.00' }), 201),
+    })
+    renderWithProviders(<SellPage />, { path: '/sales/new', pattern: '/sales/new' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Other item (no product)' }))
+    await userEvent.type(screen.getByLabelText('Other item amount'), '50')
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(await screen.findByText('Other')).toBeInTheDocument()
+    expect(api.of('POST', '/api/v1/products')[0].body).toEqual({ name: 'Other', selling_price: '0.00', unit: 'other', track_inventory: false })
+    await userEvent.click(screen.getByRole('button', { name: 'Record sale · KSh 50' }))
+    await waitFor(() => expect(api.of('POST', '/api/v1/sales')).toHaveLength(1))
+    expect((api.of('POST', '/api/v1/sales')[0].body as { lines: unknown[] }).lines).toEqual([{ product_id: 'p-other', quantity: '1', unit_price: '50' }])
+  })
+
   it('adds a loose item as a line on the untracked Other product with the amount as its price', async () => {
     const other = product({ id: 'p-other', name: 'Other', selling_price: '0.00', track_inventory: false, unit: 'other' })
     const api = mockApi({
