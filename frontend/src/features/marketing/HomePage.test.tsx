@@ -83,4 +83,18 @@ describe('HomePage', () => {
       expect(photo.getAttribute('src')).toMatch(/^\/marketing\/.+\.webp$/)
     }
   })
+
+  it('the header and footer logos scroll back to the top of the homepage', async () => {
+    renderHome()
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    const logos = [screen.getByRole('link', { name: 'SokoWise home' }), screen.getByRole('link', { name: 'Back to the top of the homepage' })]
+    for (const logo of logos) {
+      expect(logo).toHaveAttribute('href', '/')
+      await userEvent.click(logo)
+    }
+    expect(scrollTo).toHaveBeenCalledTimes(2)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'smooth' })
+    vi.unstubAllGlobals()
+  })
 })

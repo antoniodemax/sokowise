@@ -8,6 +8,7 @@ import { buttonVariants } from '@/components/ui/button-variants'
 import { cn } from '@/lib/utils'
 
 import { SECTION_LINKS } from './links'
+import { HomeLink } from './HomeLink'
 import { PublicHeader } from './PublicHeader'
 import { useDocumentMeta } from './use-document-meta'
 
@@ -271,7 +272,9 @@ export default function HomePage() {
       <footer className="border-t border-border bg-card">
         <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1fr_auto]">
           <div className="max-w-sm">
-            <BrandLockup className="w-48" />
+            <HomeLink className="inline-block rounded-md" label="Back to the top of the homepage">
+              <BrandLockup className="w-48" />
+            </HomeLink>
             <p className="mt-4 text-sm text-muted-foreground">Sales, stock, customer credit and expenses — for Kenyan small businesses.</p>
           </div>
           <nav aria-label="Footer" className="grid grid-cols-2 gap-x-10 gap-y-2 text-sm sm:grid-cols-[auto_auto]">
