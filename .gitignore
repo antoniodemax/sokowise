@@ -46,3 +46,6 @@ frontend/node_modules
 
 # Local blob storage for uploaded receipt images (RECEIPT_STORAGE_DIR)
 backend/var/
+
+# Vercel CLI project link (per machine, contains project ids and an OIDC token in .env.local)
+.vercel/

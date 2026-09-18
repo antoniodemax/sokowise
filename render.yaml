@@ -1,0 +1,80 @@
+# Render Blueprint for the SokoWise backend (docs/OPERATIONS.md §1a).
+#
+# The Render counterpart of backend/railway.toml. Staging runs on Render's free plan, which
+# has no pre-deploy command, so migrations run in the Docker command: the container applies
+# `alembic upgrade head` and only then starts uvicorn; the readiness health check refuses
+# traffic while the schema is behind the shipped head. Secrets (sync: false) are set in the
+# Render dashboard and never live in this file.
+services:
+  - type: web
+    name: sokowise-api-staging
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    # Render passes the command as an argv list (no shell), so the migrate-then-serve
+    # sequence lives in a script shipped with the image.
+    dockerCommand: /app/scripts/start.sh
+    healthCheckPath: /health/ready
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: SokoWise API (staging)
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: "10000"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://sokowise-staging.vercel.app
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: DB_STATEMENT_TIMEOUT_MS
+        value: "30000"
+      - key: RECEIPT_STORAGE_DIR
+        value: /app/var/receipts
+      - key: RECEIPT_MAX_BYTES
+        value: "8388608"
+      - key: RECEIPT_MAX_PIXELS
+        value: "25000000"
+      - key: RECEIPT_MIN_SIDE_PX
+        value: "200"
+      - key: AI_MODEL
+        value: claude-opus-5
+      - key: AI_DAILY_MESSAGE_LIMIT
+        value: "10"
+      - key: AI_MONTHLY_MESSAGE_LIMIT
+        value: "100"
+      - key: AI_REQUEST_TIMEOUT_SECONDS
+        value: "60"
+      - key: RATE_LIMIT_AI_MESSAGES_PER_MINUTE
+        value: "10"
+      - key: RATE_LIMIT_LOGIN_PER_MINUTE
+        value: "5"
+      - key: RATE_LIMIT_REGISTER_PER_MINUTE
+        value: "5"
+      - key: RATE_LIMIT_REFRESH_PER_MINUTE
+        value: "30"
+      - key: RATE_LIMIT_PASSWORD_CHANGE_PER_MINUTE
+        value: "5"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false

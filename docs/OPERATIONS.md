@@ -37,6 +37,34 @@ exists yet; nothing below has been exercised against a live Railway or Vercel pr
 | Environment | REQUIRES DEPLOYMENT CONFIGURATION | `VITE_API_BASE_URL=https://api.<domain>`, `VITE_PUBLIC_URL=https://app.<domain>`; `VITE_SENTRY_DSN` is read by nothing yet. |
 | CI | SUPPORTED PROCEDURE | `.github/workflows/ci.yml`: secrets scan (gitleaks), backend lint/type/migrate/test against Postgres, frontend lint/test/build, Docker build. Deploys are triggered by Railway's and Vercel's Git integrations, not by CI (no deploy job exists). |
 
+## 1a. Staging as deployed (2026-09-18): Render + Neon
+
+The Railway path in §1 could not be exercised: the Railway workspace is on a *Limited Trial*
+(unverified GitHub account) and every image build, including a two-line `python:3.12-slim`
+Dockerfile, was scheduled and marked FAILED within 5 s with no build output. Railway's API also
+rejected `railwayConfigFile` because config-as-code (`railway.toml`) is deprecated until
+2026-12-01. The Hobby plan ($5/month) would lift both; it was not affordable, so staging runs on
+free tiers instead. Nothing in the application changed for this; the only image change is the
+migrate-then-serve entrypoint below.
+
+| Item | Value / status |
+|---|---|
+| Frontend | Vercel project `sokowise-staging`, alias `https://sokowise-staging.vercel.app` (per-deployment hash URLs are behind Vercel SSO by default; the alias is public). `VITE_API_BASE_URL`, `VITE_PUBLIC_URL` set in the Vercel *production* environment of that project. |
+| Backend | Render free web service `sokowise-api-staging`, Frankfurt, Docker from `backend/Dockerfile`, `https://sokowise-api-staging.onrender.com`. Definition in `render.yaml` (the Render counterpart of `backend/railway.toml`). |
+| Migrations before traffic | Render free has **no pre-deploy command**, so the Docker command is `/app/scripts/start.sh`: `alembic upgrade head` then `exec uvicorn`. With one instance and the readiness check on `/health/ready` (503 while `migrations: pending`) the ordering guarantee is the same as Railway's `preDeployCommand`. Verified: a brand-new Neon database reached head `7f4db0684dfd` with all 18 tables on first deploy. |
+| Database | Neon free project `sokowise-staging`, Frankfurt, Postgres 18, 0.5 GB, autosuspends when idle, SSL required. `DATABASE_URL` uses `postgresql+asyncpg://…?ssl=require` (Neon prints `sslmode=require&channel_binding=require`; asyncpg wants `ssl=require`). Pool sized `DB_POOL_SIZE=3`, `DB_MAX_OVERFLOW=2`. Isolated from every local database. |
+| Environment | `APP_ENV=production` (the §1 start-up guards run for real), `CORS_ORIGINS=https://sokowise-staging.vercel.app` exactly, `COOKIE_SECURE=true`, `COOKIE_SAMESITE=none` (app and API are on different registrable domains — the cross-site mode of ARCHITECTURE §5.1; the CSRF header and Origin check are what protect it), `FORWARDED_ALLOW_IPS=*` (the container is reachable only through Render's proxy; verified that `audit_logs.ip` records the real client and that per-IP rate limits key on it), `RECEIPT_STORAGE_DIR=/app/var/receipts`, `API_PORT=10000`. `ANTHROPIC_API_KEY` and `SENTRY_DSN` unset. |
+| Receipt images | **Ephemeral.** Render free has no persistent disk. Measured: images survive a *restart* (same container) but are gone after a *redeploy* or an idle spin-down; `GET /receipts/{id}/image` then answers 503 `STORAGE_UNAVAILABLE` and the row stays. Upload, validation, review and confirmation all work. A persistent volume or the object-storage backend is required before any pilot data. |
+| Cold start | Render spins the service down after 15 minutes without traffic; the first request afterwards waits for the container to boot and migrate (tens of seconds). Warm requests measure ~220 ms round trip from Nairobi, ~35 ms server time. |
+| Sentry / uptime | Not configured on staging (no DSN). |
+| Backups | None. Neon free keeps a short point-in-time history but no snapshot schedule was configured; the procedure in §2 still REQUIRES DEPLOYMENT CONFIGURATION. |
+| Cost | $0. Render 750 free hours/month, Neon free tier. |
+
+Deploying a change to staging: push to `main` (Render auto-deploys the backend; Vercel's Git
+integration is not connected to this project yet — the frontend was deployed with `vercel deploy
+--prod` from `frontend/`). The Render service currently builds from the `staging-deploy` branch
+until the entrypoint commit lands on `main`; switch it back to `main` afterwards.
+
 ## 2. Backup and recovery
 
 | Procedure | Status | How |

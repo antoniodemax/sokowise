@@ -23,6 +23,8 @@ COPY --from=builder --chown=app:app /app/app /app/app
 # Migrations ship with the image so `alembic upgrade head` can run as a release step.
 COPY --from=builder --chown=app:app /app/alembic.ini /app/alembic.ini
 COPY --from=builder --chown=app:app /app/alembic /app/alembic
+# Migrate-then-serve entrypoint for hosts without a pre-deploy step (docs/OPERATIONS.md).
+COPY --chown=app:app scripts/start.sh /app/scripts/start.sh
 # Default receipt blob root for single-host/compose use. Production must point
 # RECEIPT_STORAGE_DIR at a mounted volume (docs/OPERATIONS.md); the container disk is ephemeral.
 RUN mkdir -p /app/var/receipts && chown -R app:app /app/var

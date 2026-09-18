@@ -344,7 +344,9 @@ Done in the 2026-09-17 hardening pass (no deployment yet): production start-up g
 
 ---
 
-## Phase 16 — Deployment and monitoring ☐
+## Phase 16 — Deployment and monitoring ◐ (staging deployed 2026-09-18 on Render + Neon + Vercel; see OPERATIONS §1a)
+
+Staging is real and validated end to end on the deployed domains: cross-site auth (refresh rotation, reuse revocation, logout, logout-all, password change, staff gate), CORS/CSRF, forwarded client IP and rate limits, the full sales/credit/void/expense/inventory workflow with hand-checked analytics, three CSV exports, OWNER/STAFF matrix, two-tenant isolation, receipt validation and privacy, AI and receipt reading failing safely without a key, four viewports. Railway was abandoned for staging (limited trial cannot build images). Still open before a pilot: persistent receipt storage, Sentry/uptime, backups, Anthropic billing, Vercel Git integration, moving the Render service back to `main`.
 **Objective:** production live with observability.
 
 **Tasks**
