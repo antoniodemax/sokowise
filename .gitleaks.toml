@@ -15,4 +15,6 @@ regexes = [
   '''change-me-to-at-least-32-random''',
   '''postgresql(\+asyncpg)?://sokowise:sokowise@''',
   '''u:p@127\.0\.0\.1:1/nowhere''',
+  # Fake Google signup token in the frontend test for the finish-up form.
+  '''tok-0123456789abcdefghij''',
 ]
