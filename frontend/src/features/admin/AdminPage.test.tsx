@@ -31,13 +31,23 @@ describe('AdminPage', () => {
     const totals = (await screen.findAllByText('Businesses'))[0].closest('section') as HTMLElement
     expect(within(totals).getByText('3', { selector: 'p' })).toBeInTheDocument()
     expect(within(totals).getByText(/3 owners · 1 staff · 3 signed in this week/)).toBeInTheDocument()
-    expect(within(totals).getByText('KSh 4,250')).toBeInTheDocument()
-    expect(within(totals).getByText(/deni outstanding KSh 540/)).toBeInTheDocument()
+    expect(within(totals).getByText(/33% of businesses recorded a sale in 7 days/)).toBeInTheDocument()
+    const recording = screen.getByText('Sales recorded').closest('dl') as HTMLElement
+    expect(within(recording).getByText('KSh 4,250')).toBeInTheDocument()
+    expect(within(recording).getByText('KSh 540')).toBeInTheDocument()
+    expect(within(recording).getByText('9')).toBeInTheDocument()
+    expect(screen.getByText(/2/, { selector: 'span.tabular' })).toBeInTheDocument() // sign-ups in 30 days
     expect(screen.getByRole('list', { name: 'Sign-ups per day' }).children).toHaveLength(30)
     const table = screen.getByRole('table')
     expect(within(table).getByText('Nairobi Test Shop A')).toBeInTheDocument()
     expect(within(table).getByText('Salon / barber')).toBeInTheDocument()
     expect(within(table).getByText('inactive')).toBeInTheDocument()
+    expect(within(table).getAllByText('today').length).toBeGreaterThan(0)
+    // phones get one card per business with the same facts
+    const cards = screen.getByRole('list', { name: 'Businesses' })
+    expect(within(cards).getByText('Salon B')).toBeInTheDocument()
+    expect(within(cards).getByText('never')).toBeInTheDocument()
+    expect(within(table).getByText('not since sign-up')).toBeInTheDocument()
     // Nothing on the page is a phone number or a customer name.
     expect(screen.queryByText(/\+254/)).not.toBeInTheDocument()
   })
