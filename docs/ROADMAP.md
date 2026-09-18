@@ -378,3 +378,11 @@ Staging is real and validated end to end on the deployed domains: cross-site aut
 ## Phase 17a — M-Pesa SMS matching ☑ (2026-09-18)
 
 Pilot shops receive every M-Pesa payment as an SMS. Paste or share it; the app parses it, links it by code to the sale tender or credit repayment (before or after the record exists), suggests candidates for the rest, and shows received vs recorded per day. Owner-only ignore; void unlinks. Android share target through the web manifest. See ARCHITECTURE §7.1, DATA_MAPPING §3.19, PRD FR-M. Daraja stays future work.
+
+## Phase 18 — Simple start and copilot actions ☑ (2026-09-18)
+
+**Part A — Simple start (no AI).** Curated starter catalogue per business type (`app/catalog/starter.py`, `GET /products/starter`), all-or-nothing bulk create (`POST /products/bulk`), a dashboard "What do you sell?" card and `/setup` page until the first product exists, product form with essentials first and "More details" collapsed, an "Other item" quick-sale line against the untracked "Other" product, plain-words dashboard cards. PRD FR-N.
+
+**Part B — Copilot proposes, the owner confirms.** Non-executing `propose_product` / `propose_sale` / `propose_repayment` / `propose_restock` tools plus a `search_products` read tool; a proposal is validated and stored on the assistant message (`ai_messages.proposal*`, migration `6161c7ab7a12`); `POST …/messages/{mid}/confirm` and `…/reject` (OWNER) go through `services/ai_actions`, which re-validates the owner's payload and executes through the normal services with an idempotency key per message; the frontend shows an editable card with Confirm / Not now that locks once applied. PRD FR-J7, ARCHITECTURE §6.2/§6.4, DATA_MAPPING §3.15.
+
+Completion: backend and frontend suites green, migration applied to dev and staging, Part A walked through at 390 px. **Open:** the live model's behaviour with the proposal tools (choosing to propose, resolving ids first, saying "tap Confirm") is only covered by the fake-provider tests until Anthropic billing exists.

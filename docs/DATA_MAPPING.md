@@ -323,9 +323,13 @@ Restock spend is *not* here (BR-6).
 | input_tokens, output_tokens, cache_read_tokens | INTEGER NULL | |
 | stop_reason | VARCHAR(30) NULL | |
 | latency_ms | INTEGER NULL | |
+| proposal | JSONB NULL | `{kind, payload}` the copilot proposed (`kind` in `product`, `sale`, `repayment`, `restock`); assistant rows only. Python `None` is stored as SQL NULL, never JSON `null` |
+| proposal_status | VARCHAR(10) NULL | CHECK in (`PENDING`, `APPLIED`, `REJECTED`, `EXPIRED`); CHECK `(proposal IS NULL) = (proposal_status IS NULL)` |
+| proposal_entity_id | UUID NULL | id of the product / sale / credit transaction / inventory movement created on confirm |
+| proposal_applied_at | TIMESTAMPTZ NULL | |
 | created_at | | |
 
-Index `(business_id, role, created_at)` for quota counting; quotas count `role = 'user'` rows only.
+Index `(business_id, role, created_at)` for quota counting; quotas count `role = 'user'` rows only. A proposal is confirmable only while `proposal_status = 'PENDING'` and `created_at` is within 24 h; the record it creates is written by the normal service and its audit row (`ai.proposal_apply`) points at the message id with `entity_type = 'ai_proposal'`.
 
 ### 3.17 receipts
 | Column | Type | Notes |

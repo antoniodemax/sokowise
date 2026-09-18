@@ -222,7 +222,7 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-J4. Conversations and messages are persisted per business and user.
 - FR-J5. Every answer that cites numbers must derive them from tool results; the backend records which tool results backed the answer.
 - FR-J6. Per-business daily usage limits and a global cost cap are enforced.
-- FR-J7. AI output never modifies records in MVP. Post-MVP, AI may *propose* actions that require explicit user confirmation and pass normal validation.
+- FR-J7 (as built 2026-09-18). The AI never writes. When the owner asks to *add* or *record* something, the copilot may return one **proposal** (a new product, a sale, a customer's debt repayment, or a restock) through a non-executing `propose_*` tool. The proposal is validated, stored on the assistant message as pending, and shown as a card with editable fields and **Confirm** / **Not now**. Only an explicit confirm by an OWNER, re-validated server-side and executed through the same services every screen uses, creates the record; a proposal older than 24 h cannot be confirmed. The answer text must say "tap Confirm" and never claim the record exists. Expenses, edits and voids are not proposable.
 - FR-J8. If the AI service is unavailable, the rest of the app keeps working.
 - FR-J9 (as built). Answers are returned whole, not streamed (AI-9 is not met yet; see §21). Global spend cap alerts (AI-8) are not enforced in code.
 
@@ -246,6 +246,13 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-M4. OWNER can ignore a message that is not shop income. Voiding a sale returns its message to "not recorded".
 - FR-M5. For each day the app shows: M-Pesa received (from messages), recorded, not recorded, and the M-Pesa money recorded in SokoWise, so the owner can see at a glance what arrived without a record.
 - FR-M6. Daraja (automatic confirmation from Safaricom for Till/Paybill) remains future scope (§10); Pochi la Biashara has no API, so SMS matching is its end state.
+
+### FR-N Simple start (implemented 2026-09-18)
+- FR-N1. A built-in, curated starter list per business type (general shop, boutique, salon, restaurant, electronics; "other" is empty) with Kenyan item names, typical prices and a suggested cost. It works without any AI key.
+- FR-N2. Until the business has at least one product, the owner's dashboard shows a "What do you sell?" card leading to `/setup`, where the owner ticks items, fixes prices, types what they have in stock, and adds them all at once (all-or-nothing; an item that already exists names its row). The card can be skipped and never blocks the app.
+- FR-N3. The product form shows the essentials (name, selling price, cost, stock now) with the rest under "More details". No field is removed.
+- FR-N4. The sell screen has an "Other item" line (description + amount) for things not in the catalogue, recorded against the untracked product named "Other" that the starter list includes; the description goes into the sale note.
+- FR-N5. Dashboard cards use plain words: Sold, In your pocket, Deni (owed to you), Profit before costs, Matumizi (costs), Profit. The analytics page keeps its terms.
 
 ## 12. Non-functional requirements
 
@@ -452,7 +459,7 @@ Requirements:
 - AI-13. PII minimisation: customer phone numbers are not sent to the model unless the question requires them (e.g. "give me John's number"), and then only for the customers in the result set.
 - AI-14. STAFF cannot use the copilot in MVP (it exposes profit). Revisit with a role-aware tool subset.
 
-## 21. Implementation status (2026-09-17, after Phase 14 and the Phase 15 hardening audit)
+## 21. Implementation status (2026-09-18, after Phase 18)
 
 This section is the honest map between this document and the code. "IMPLEMENTED" means built and covered by the automated suites (backend against a real PostgreSQL, frontend with Vitest) and, where noted, walked through in a browser. Nothing here claims a production deployment exists.
 
@@ -462,7 +469,8 @@ This section is the honest map between this document and the code. "IMPLEMENTED"
 - Sales and payments (FR-F1–F9; idempotency, discount allocation BR-9/BR-14, voids that reverse stock and credit).
 - Customers and credit (FR-G1–G5; ledger as source of truth, balance cache recompute `POST /customers/recompute`). Customer edit/archive and PII deletion (NFR-7) are **not** built.
 - Expenses (FR-H) with soft delete and CSV export; analytics (FR-I1–I7) in the business timezone.
-- AI copilot (FR-J1–J8, AI-1–AI-8 quotas, AI-10, AI-13, AI-14) — read-only tools, tenant scoped, whole-answer responses (no streaming, AI-9 open), no enforced global spend cap.
+- AI copilot (FR-J1–J8, AI-1–AI-8 quotas, AI-10, AI-13, AI-14) — read-only tools, tenant scoped, whole-answer responses (no streaming, AI-9 open), no enforced global spend cap. Copilot proposals with owner confirmation (FR-J7 as built): covered by the backend suite with a fake provider; the live model behaviour (choosing to propose, resolving ids first) needs Anthropic billing to verify and has not been observed yet.
+- Simple start (FR-N1–N5): starter catalogue per business type, bulk add, setup card, simplified product form, "Other item" quick sale, plain-words dashboard.
 - Supplier receipt intelligence (FR-L1–L7) — upload, validation, private storage, extraction pipeline, conservative matching, owner review and atomic confirmation into inventory.
 - Data exports (NFR-12): expenses, sales and customers CSV.
 - M-Pesa SMS matching (FR-M1–M5): paste or share a confirmation SMS, automatic linking by code in both directions, suggestions, owner ignore, daily received-vs-recorded summary, Android share target via the web manifest.
