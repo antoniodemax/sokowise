@@ -15,7 +15,13 @@ from app.api.deps import get_client_info, require_member, require_owner
 from app.core.context import BusinessContext, ClientInfo
 from app.db.session import get_session
 from app.repositories.products import MAX_LIST_LIMIT
-from app.schemas.catalog import ProductCreateRequest, ProductOut, ProductUpdateRequest
+from app.schemas.catalog import (
+    ProductBulkCreateRequest,
+    ProductCreateRequest,
+    ProductOut,
+    ProductUpdateRequest,
+    StarterItemOut,
+)
 from app.services import products as products_service
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -45,6 +51,31 @@ async def list_products(
         include_archived=include_archived,
         limit=limit,
     )
+    return [ProductOut.model_validate(row, from_attributes=True) for row in rows]
+
+
+@router.get("/starter", response_model=list[StarterItemOut])
+async def starter(ctx: OwnerCtx, session: SessionDep) -> list[StarterItemOut]:
+    """The curated starter list for this shop type; the owner ticks and edits before saving."""
+    items = await products_service.starter_catalogue(session, ctx)
+    return [
+        StarterItemOut(
+            name=i.name,
+            selling_price=i.selling_price,
+            cost_price=i.cost_price,
+            unit=i.unit,
+            track_inventory=i.track_inventory,
+        )
+        for i in items
+    ]
+
+
+@router.post("/bulk", status_code=HTTPStatus.CREATED, response_model=list[ProductOut])
+async def create_products_bulk(
+    payload: ProductBulkCreateRequest, ctx: OwnerCtx, session: SessionDep, client: ClientDep
+) -> list[ProductOut]:
+    """Up to 100 products in one transaction; all or nothing."""
+    rows = await products_service.create_products_bulk(session, ctx, payload.items, client)
     return [ProductOut.model_validate(row, from_attributes=True) for row in rows]
 
 

@@ -134,3 +134,19 @@ class ProductOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class ProductBulkCreateRequest(BaseModel):
+    """The setup wizard: many products in one transaction (PRD FR-N)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ProductCreateRequest] = Field(min_length=1, max_length=100)
+
+
+class StarterItemOut(BaseModel):
+    name: str
+    selling_price: Decimal
+    cost_price: Decimal | None
+    unit: ProductUnit
+    track_inventory: bool

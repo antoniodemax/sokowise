@@ -509,3 +509,86 @@ async def test_tracking_stays_on_once_the_product_has_movements(
     assert error_code(blocked) == "PRODUCT_HAS_MOVEMENTS"
     void = await api.post(f"{SALES_URL}/{sale['id']}/void", headers=a.owner, json={"reason": "x"})
     assert void.status_code == HTTPStatus.OK, void.text
+
+
+# --- starter catalogue and bulk create (PRD FR-N) -----------------------------------------
+
+
+async def test_starter_list_follows_the_business_type_and_is_owner_only(
+    api: AsyncClient, tenants: tuple[Tenant, Tenant]
+) -> None:
+    a, _ = tenants
+    assert a.staff is not None
+    assert (await api.get(f"{URL}/starter", headers=a.staff)).status_code == HTTPStatus.FORBIDDEN
+    response = await api.get(f"{URL}/starter", headers=a.owner)
+    assert response.status_code == HTTPStatus.OK, response.text
+    items = response.json()
+    names = [i["name"] for i in items]
+    assert "Sukari 1kg" in names and names[-1] == "Other"  # default type is a general shop
+    other = items[-1]
+    assert other["track_inventory"] is False and other["selling_price"] == "0.00"
+    assert all(i["selling_price"] is not None and i["unit"] for i in items)
+    # Switching the business type changes the list.
+    patched = await api.patch("/api/v1/business", headers=a.owner, json={"business_type": "SALON"})
+    assert patched.status_code == HTTPStatus.OK, patched.text
+    salon = [i["name"] for i in (await api.get(f"{URL}/starter", headers=a.owner)).json()]
+    assert "Braiding" in salon and "Sukari 1kg" not in salon
+
+
+async def test_bulk_create_is_all_or_nothing_and_names_the_bad_item(
+    api: AsyncClient, db_session: AsyncSession, tenants: tuple[Tenant, Tenant]
+) -> None:
+    a, b = tenants
+    assert a.staff is not None
+    items = [
+        {"name": "Sukari 1kg", "selling_price": "160", "cost_price": "135", "opening_stock": "20"},
+        {"name": "Airtime", "selling_price": "0", "track_inventory": False, "unit": "other"},
+        {"name": "Mkate 400g", "selling_price": "60", "cost_price": "50"},
+    ]
+    staff = await api.post(f"{URL}/bulk", headers=a.staff, json={"items": items})
+    assert staff.status_code == HTTPStatus.FORBIDDEN
+    created = await api.post(f"{URL}/bulk", headers=a.owner, json={"items": items})
+    assert created.status_code == HTTPStatus.CREATED, created.text
+    rows = created.json()
+    assert [r["name"] for r in rows] == ["Sukari 1kg", "Airtime", "Mkate 400g"]
+    assert rows[0]["stock_quantity"] == "20.000" and rows[1]["track_inventory"] is False
+    # The opening stock wrote an INITIAL movement like a single create would.
+    movements = await api.get(
+        f"/api/v1/inventory/movements?product_id={rows[0]['id']}", headers=a.owner
+    )
+    assert [m["movement_type"] for m in movements.json()] == ["INITIAL"]
+
+    # A duplicate in position 2 rolls back the whole batch, including the new product at 1.
+    clash = await api.post(
+        f"{URL}/bulk",
+        headers=a.owner,
+        json={
+            "items": [
+                {"name": "Maziwa 500ml", "selling_price": "65"},
+                {"name": "sukari 1KG", "selling_price": "1"},  # case-insensitive duplicate
+            ]
+        },
+    )
+    assert clash.status_code == HTTPStatus.CONFLICT, clash.text
+    body = clash.json()["error"]
+    assert body["code"] == "PRODUCT_NAME_EXISTS" and body["details"] == {
+        "index": 1,
+        "name": "sukari 1KG",
+    }
+    assert body["message"].startswith("Item 2 (sukari 1KG)")
+    listed = [p["name"] for p in (await api.get(URL, headers=a.owner)).json()]
+    assert "Maziwa 500ml" not in listed and len(listed) == 3
+    # Tenant B is untouched and cannot see A's products.
+    assert (await api.get(URL, headers=b.owner)).json() == []
+
+
+@pytest.mark.parametrize(
+    "items",
+    [[], [{"name": "x", "selling_price": "1"}] * 101, [{"name": "", "selling_price": "1"}]],
+)
+async def test_bulk_create_validation(
+    api: AsyncClient, tenants: tuple[Tenant, Tenant], items: list[dict[str, str]]
+) -> None:
+    a, _ = tenants
+    response = await api.post(f"{URL}/bulk", headers=a.owner, json={"items": items})
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY

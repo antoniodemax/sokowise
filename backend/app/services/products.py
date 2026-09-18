@@ -10,23 +10,28 @@ Only the *current* state lives here. Sale lines snapshot price and cost at sale
 time (BR-5), so changing a product never rewrites history.
 """
 
+import logging
 import uuid
 from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalog.starter import StarterItem, starter_items
 from app.core.context import BusinessContext, ClientInfo
 from app.core.errors import ConflictError, NotFoundError
 from app.db.session import transaction
 from app.models import Product
 from app.models.enums import MovementType
+from app.repositories import businesses as business_repo
 from app.repositories import categories as category_repo
 from app.repositories import inventory as inventory_repo
 from app.repositories import products as product_repo
 from app.schemas.catalog import ProductCreateRequest, ProductUpdateRequest
 from app.services import audit, inventory
 from app.services.audit import AuditAction
+
+logger = logging.getLogger(__name__)
 
 ENTITY_TYPE = "product"
 
@@ -103,43 +108,88 @@ async def create_product(
     """Insert the product and, when `opening_stock` is given, its INITIAL movement, atomically."""
     try:
         async with transaction(session):
-            await _ensure_category(session, ctx, data.category_id)
-            product = Product(
-                business_id=ctx.business_id,
-                category_id=data.category_id,
-                name=data.name,
-                sku=data.sku,
-                barcode=data.barcode,
-                unit=data.unit,
-                selling_price=data.selling_price,
-                cost_price=data.cost_price,
-                track_inventory=data.track_inventory,
-                stock_quantity=Decimal("0"),
-                low_stock_threshold=data.low_stock_threshold,
-                is_active=True,
-            )
-            session.add(product)
-            await session.flush()
-            if data.opening_stock is not None:
-                unit_cost = (
-                    data.opening_unit_cost
-                    if data.opening_unit_cost is not None
-                    else data.cost_price
-                )
-                await inventory.apply_movement(
-                    session,
-                    ctx,
-                    product=product,
-                    movement_type=MovementType.INITIAL,
-                    quantity_delta=data.opening_stock,
-                    unit_cost=unit_cost,
-                )
-            await session.refresh(product)
+            product = await create_product_in_transaction(session, ctx, data)
     except IntegrityError as exc:
         conflict = _translate(exc)
         if conflict is not None:
             raise conflict from None
         raise
+    return product
+
+
+async def create_products_bulk(
+    session: AsyncSession,
+    ctx: BusinessContext,
+    items: list[ProductCreateRequest],
+    client: ClientInfo,
+) -> list[Product]:
+    """Create many products in ONE transaction (the setup wizard). All or nothing.
+
+    A uniqueness clash names the offending item's position so the owner can fix that one
+    line; nothing else was written.
+    """
+    products: list[Product] = []
+    try:
+        async with transaction(session):
+            for index, data in enumerate(items):
+                try:
+                    products.append(await create_product_in_transaction(session, ctx, data))
+                except IntegrityError as exc:
+                    conflict = _translate(exc)
+                    if conflict is None:
+                        raise
+                    raise ConflictError(
+                        f"Item {index + 1} ({data.name}): {conflict.message}",
+                        code=conflict.code,
+                        details={"index": index, "name": data.name},
+                    ) from None
+    except IntegrityError as exc:
+        conflict = _translate(exc)
+        if conflict is not None:
+            raise conflict from None
+        raise
+    logger.info(
+        "products created in bulk",
+        extra={"business_id": str(ctx.business_id), "count": len(products)},
+    )
+    return products
+
+
+async def create_product_in_transaction(
+    session: AsyncSession, ctx: BusinessContext, data: ProductCreateRequest
+) -> Product:
+    """The insert itself, inside the caller's transaction. Uniqueness errors propagate."""
+    await _ensure_category(session, ctx, data.category_id)
+    async with session.begin_nested():
+        product = Product(
+            business_id=ctx.business_id,
+            category_id=data.category_id,
+            name=data.name,
+            sku=data.sku,
+            barcode=data.barcode,
+            unit=data.unit,
+            selling_price=data.selling_price,
+            cost_price=data.cost_price,
+            track_inventory=data.track_inventory,
+            stock_quantity=Decimal("0"),
+            low_stock_threshold=data.low_stock_threshold,
+            is_active=True,
+        )
+        session.add(product)
+        await session.flush()
+        if data.opening_stock is not None:
+            unit_cost = (
+                data.opening_unit_cost if data.opening_unit_cost is not None else data.cost_price
+            )
+            await inventory.apply_movement(
+                session,
+                ctx,
+                product=product,
+                movement_type=MovementType.INITIAL,
+                quantity_delta=data.opening_stock,
+                unit_cost=unit_cost,
+            )
+    await session.refresh(product)
     return product
 
 
@@ -227,3 +277,11 @@ async def update_product(
 def _plain(value: object) -> object:
     """JSON-safe form for audit payloads: Decimals become strings (never floats)."""
     return str(value) if isinstance(value, Decimal) else value
+
+
+async def starter_catalogue(session: AsyncSession, ctx: BusinessContext) -> list[StarterItem]:
+    """The curated starter list for this business's type (PRD FR-N)."""
+    business = await business_repo.get_business(session, ctx.business_id)
+    if business is None:  # pragma: no cover — the context was built from this row
+        raise NotFoundError("Business not found")
+    return starter_items(business.business_type)

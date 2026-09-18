@@ -15,6 +15,7 @@ const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
 const SalesPage = lazy(() => import('@/features/sales/SalesPage'))
 const SellPage = lazy(() => import('@/features/sales/SellPage'))
 const MpesaPage = lazy(() => import('@/features/mpesa/MpesaPage'))
+const SetupPage = lazy(() => import('@/features/products/SetupPage'))
 const SaleDetailPage = lazy(() => import('@/features/sales/SaleDetailPage'))
 const ProductsPage = lazy(() => import('@/features/products/ProductsPage'))
 const ProductDetailPage = lazy(() => import('@/features/products/ProductDetailPage'))
@@ -66,6 +67,7 @@ export function AppRouter() {
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:customerId" element={<CustomerDetailPage />} />
               <Route element={<RequireOwner />}>
+                <Route path="/setup" element={<SetupPage />} />
                 <Route path="/inventory/receipts" element={<ReceiptsPage />} />
                 <Route path="/inventory/receipts/:receiptId" element={<ReceiptReviewPage />} />
                 <Route path="/expenses" element={<ExpensesPage />} />

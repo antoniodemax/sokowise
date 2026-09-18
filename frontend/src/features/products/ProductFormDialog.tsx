@@ -66,6 +66,7 @@ function ProductForm({ product, onDone, onCancel }: { product?: Product; onDone:
   const queryClient = useQueryClient()
   const categories = useCategories()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [showMore, setShowMore] = useState(false)
   const editing = !!product
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -146,6 +147,28 @@ function ProductForm({ product, onDone, onCancel }: { product?: Product; onDone:
         <Field id="cost_price" label="Cost price (KSh)" optional hint="What you pay per unit. Needed to see profit." error={errors.cost_price?.message}>
           <Input id="cost_price" inputMode="decimal" placeholder="0.00" invalid={!!errors.cost_price} {...form.register('cost_price')} />
         </Field>
+      </div>
+      <label className="flex items-start gap-3 rounded-lg border border-border p-3">
+        <Checkbox className="mt-0.5" {...form.register('track_inventory')} />
+        <span>
+          <span className="block text-sm font-medium">Track stock for this product</span>
+          <span className="block text-xs text-muted-foreground">Turn off for services (haircuts, repairs) and things you never count.</span>
+        </span>
+      </label>
+      {tracked && !editing && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field id="opening_stock" label="Stock now" optional hint="How many you have in the shop today." error={errors.opening_stock?.message}>
+            <Input id="opening_stock" inputMode="decimal" invalid={!!errors.opening_stock} {...form.register('opening_stock')} />
+          </Field>
+          <Field id="opening_unit_cost" label="Cost per unit of that stock (KSh)" optional hint="Defaults to the cost price." error={errors.opening_unit_cost?.message}>
+            <Input id="opening_unit_cost" inputMode="decimal" invalid={!!errors.opening_unit_cost} {...form.register('opening_unit_cost')} />
+          </Field>
+        </div>
+      )}
+      <button type="button" className="inline-flex min-h-8 items-center gap-1 text-sm font-medium text-primary hover:underline" aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
+        {showMore ? 'Fewer details' : 'More details'} <span className="text-muted-foreground">(unit, category, code, stock alert)</span>
+      </button>
+      <div className={showMore ? 'grid gap-4 sm:grid-cols-2' : 'hidden'}>
         <Field id="unit" label="Unit" error={errors.unit?.message}>
           <Select id="unit" {...form.register('unit')}>
             {PRODUCT_UNITS.map((unit) => (
@@ -168,28 +191,11 @@ function ProductForm({ product, onDone, onCancel }: { product?: Product; onDone:
           <Input id="barcode" inputMode="numeric" invalid={!!errors.barcode} {...form.register('barcode')} />
         </Field>
       </div>
-      <label className="flex items-start gap-3 rounded-lg border border-border p-3">
-        <Checkbox className="mt-0.5" {...form.register('track_inventory')} />
-        <span>
-          <span className="block text-sm font-medium">Track stock for this product</span>
-          <span className="block text-xs text-muted-foreground">Turn off for services (haircuts, repairs) and things you never count.</span>
-        </span>
-      </label>
       {tracked && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className={showMore ? 'grid gap-4 sm:grid-cols-2' : 'hidden'}>
           <Field id="low_stock_threshold" label="Low-stock alert at" optional hint="Leave empty to use the business default." error={errors.low_stock_threshold?.message}>
             <Input id="low_stock_threshold" inputMode="decimal" invalid={!!errors.low_stock_threshold} {...form.register('low_stock_threshold')} />
           </Field>
-          {!editing && (
-            <>
-              <Field id="opening_stock" label="Stock on hand now" optional error={errors.opening_stock?.message}>
-                <Input id="opening_stock" inputMode="decimal" invalid={!!errors.opening_stock} {...form.register('opening_stock')} />
-              </Field>
-              <Field id="opening_unit_cost" label="Cost per unit of that stock (KSh)" optional hint="Defaults to the cost price." error={errors.opening_unit_cost?.message}>
-                <Input id="opening_unit_cost" inputMode="decimal" invalid={!!errors.opening_unit_cost} {...form.register('opening_unit_cost')} />
-              </Field>
-            </>
-          )}
         </div>
       )}
       <DialogFooter>

@@ -139,3 +139,24 @@ describe('SellPage opened from an M-Pesa message', () => {
     expect(await screen.findByRole('heading', { name: 'M-Pesa page' })).toBeInTheDocument()
   })
 })
+
+describe('SellPage quick "Other item"', () => {
+  it('adds a loose item as a line on the untracked Other product with the amount as its price', async () => {
+    const other = product({ id: 'p-other', name: 'Other', selling_price: '0.00', track_inventory: false, unit: 'other' })
+    const api = mockApi({
+      'GET /api/v1/products': (_init: RequestInit, url: URL) => json(url.searchParams.get('q') === 'Other' ? [other] : [bread, other]),
+      'POST /api/v1/sales': () => json(sale({ total_amount: '50.00' }), 201),
+    })
+    renderWithProviders(<SellPage />, { path: '/sales/new', pattern: '/sales/new' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Other item (no product)' }))
+    await userEvent.type(screen.getByLabelText('Other item description'), '2 scoops rice')
+    await userEvent.type(screen.getByLabelText('Other item amount'), '50')
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(screen.getByText('Other: 2 scoops rice')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Record sale · KSh 50' }))
+    await waitFor(() => expect(api.of('POST', '/api/v1/sales')).toHaveLength(1))
+    const body = api.of('POST', '/api/v1/sales')[0].body as { lines: unknown[]; note: string | null }
+    expect(body.lines).toEqual([{ product_id: 'p-other', quantity: '1', unit_price: '50' }])
+    expect(body.note).toBe('2 scoops rice')
+  })
+})

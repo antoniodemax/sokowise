@@ -50,10 +50,22 @@ export type ProductListParams = {
   limit?: number
 }
 
+export interface StarterItem {
+  name: string
+  selling_price: string
+  cost_price: string | null
+  unit: ProductUnit
+  track_inventory: boolean
+}
+
 export const productsApi = {
   list: (params: ProductListParams, signal?: AbortSignal) => request<Product[]>('/api/v1/products', { query: params, signal }),
   get: (id: string, signal?: AbortSignal) => request<Product>(`/api/v1/products/${id}`, { signal }),
   create: (body: ProductCreate) => request<Product>('/api/v1/products', { method: 'POST', body }),
+  /** OWNER: the curated starter list for this shop type (PRD FR-N). */
+  starter: (signal?: AbortSignal) => request<StarterItem[]>('/api/v1/products/starter', { signal }),
+  /** OWNER: up to 100 products in one transaction; all or nothing. */
+  createBulk: (items: ProductCreate[]) => request<Product[]>('/api/v1/products/bulk', { method: 'POST', body: { items } }),
   update: (id: string, body: ProductUpdate) => request<Product>(`/api/v1/products/${id}`, { method: 'PATCH', body }),
 }
 

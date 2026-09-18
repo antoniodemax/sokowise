@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Banknote, HandCoins, Package, Plus, Receipt, ShoppingCart, Smartphone, TrendingUp, UserRound, Wallet } from 'lucide-react'
+import { AlertTriangle, Banknote, HandCoins, Package, Plus, Receipt, ShoppingCart, Smartphone, Sparkles, TrendingUp, UserRound, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -14,6 +14,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useDebtors } from '@/features/customers/hooks'
 import { useLowStock } from '@/features/inventory/hooks'
 import { useMpesaReconciliation } from '@/features/mpesa/hooks'
+import { useProducts } from '@/features/products/hooks'
 import { formatCalendarDate, localDate } from '@/lib/dates'
 import { formatKsh, formatQuantity } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -92,12 +93,12 @@ export function Metrics({ summary }: { summary: AnalyticsSummary }) {
   const missing = summary.lines_missing_cost > 0
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <MetricCard label="Revenue" value={formatKsh(summary.revenue)} icon={<TrendingUp />} hint={`${summary.sales_count} ${summary.sales_count === 1 ? 'sale' : 'sales'} · includes credit sales`} />
-      <MetricCard label="Cash collected" value={formatKsh(summary.cash_collected_total)} icon={<Banknote />} hint={`Cash ${formatKsh(summary.cash_collected.CASH ?? '0')} · M-Pesa ${formatKsh(summary.cash_collected.MPESA ?? '0')}`} />
-      <MetricCard label="Owed by customers" value={formatKsh(summary.receivables_outstanding)} icon={<HandCoins />} hint="Outstanding credit right now" />
-      <MetricCard label="Gross profit" value={formatKsh(summary.gross_profit)} icon={<Wallet />} hint={missing ? `${summary.lines_missing_cost} sale ${summary.lines_missing_cost === 1 ? 'line has' : 'lines have'} no cost price yet` : `After cost of goods ${formatKsh(summary.cogs)}`} />
-      <MetricCard label="Expenses" value={formatKsh(summary.expenses)} icon={<Receipt />} hint="Money spent in this period" />
-      <MetricCard label="Net profit" value={formatKsh(summary.net_profit)} icon={<ShoppingCart />} hint="Gross profit minus expenses" tone={net} />
+      <MetricCard label="Sold" value={formatKsh(summary.revenue)} icon={<TrendingUp />} hint={`${summary.sales_count} ${summary.sales_count === 1 ? 'sale' : 'sales'} · includes deni sales`} />
+      <MetricCard label="In your pocket" value={formatKsh(summary.cash_collected_total)} icon={<Banknote />} hint={`Cash ${formatKsh(summary.cash_collected.CASH ?? '0')} · M-Pesa ${formatKsh(summary.cash_collected.MPESA ?? '0')}`} />
+      <MetricCard label="Deni (owed to you)" value={formatKsh(summary.receivables_outstanding)} icon={<HandCoins />} hint="Customers still to pay" />
+      <MetricCard label="Profit before costs" value={formatKsh(summary.gross_profit)} icon={<Wallet />} hint={missing ? `${summary.lines_missing_cost} sale ${summary.lines_missing_cost === 1 ? 'line has' : 'lines have'} no cost price yet` : `After cost of goods ${formatKsh(summary.cogs)}`} />
+      <MetricCard label="Matumizi (costs)" value={formatKsh(summary.expenses)} icon={<Receipt />} hint="Money spent in this period" />
+      <MetricCard label="Profit" value={formatKsh(summary.net_profit)} icon={<ShoppingCart />} hint="After your costs" tone={net} />
     </div>
   )
 }
@@ -138,6 +139,24 @@ function LowStockCard() {
           </ul>
         )}
         {lowStock.data && lowStock.data.length > 6 && <Link to="/inventory" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">See all {lowStock.data.length}</Link>}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Shown to the owner until the shop has at least one product. */
+function SetupCard() {
+  const products = useProducts({ limit: 1 })
+  if (products.isPending || products.isError || products.data.length > 0) return null
+  return (
+    <Card className="mb-4 border-primary/40 bg-primary-soft/30">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Sparkles className="size-4 text-primary" aria-hidden="true" /> Start here: what do you sell?</CardTitle>
+        <CardDescription>Tick your items from a ready-made list for your kind of shop. Two minutes, then you can sell.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        <Link to="/setup" className={buttonVariants({ size: 'lg' })}>Choose my items</Link>
+        <Link to="/products" className={buttonVariants({ variant: 'outline', size: 'lg' })}>Add one by one</Link>
       </CardContent>
     </Card>
   )
@@ -223,6 +242,7 @@ export default function DashboardPage() {
         description={isOwner ? (range ? `How ${session?.business.name} is doing · ${range}` : `How ${session?.business.name} is doing`) : `${session?.business.name}`}
         actions={isOwner ? <PeriodControl value={period} onChange={setPeriod} /> : undefined}
       />
+      {isOwner && <SetupCard />}
       <div className="mb-4"><QuickActions /></div>
       {!isOwner ? (
         <div className="grid gap-4 md:grid-cols-2">
