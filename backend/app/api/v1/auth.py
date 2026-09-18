@@ -19,6 +19,7 @@ from app.api.deps import (
     get_client_info,
     get_current_user,
     get_settings_dep,
+    is_platform_admin,
     require_csrf_header,
     require_trusted_origin,
 )
@@ -88,6 +89,7 @@ def _session_response(auth: AuthSession, settings: Settings) -> SessionResponse:
         user=UserOut.model_validate(auth.user, from_attributes=True),
         business=BusinessOut.model_validate(auth.business, from_attributes=True),
         role=auth.role,
+        is_platform_admin=is_platform_admin(settings, auth.user),
     )
 
 
@@ -222,10 +224,12 @@ async def me(
     ctx: Annotated[BusinessContext, Depends(get_business_context)],
     user: Annotated[User, Depends(get_current_user)],
     session: SessionDep,
+    settings: SettingsDep,
 ) -> MeResponse:
     business = await auth_service.get_business_for_context(session, ctx)
     return MeResponse(
         user=UserOut.model_validate(user, from_attributes=True),
         business=BusinessOut.model_validate(business, from_attributes=True),
         role=ctx.role,
+        is_platform_admin=is_platform_admin(settings, user),
     )

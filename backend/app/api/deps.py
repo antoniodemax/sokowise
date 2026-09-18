@@ -184,3 +184,28 @@ def require_role(
 
 require_owner = require_role(MembershipRole.OWNER)
 require_member = require_role(MembershipRole.OWNER, MembershipRole.STAFF)
+
+
+def is_platform_admin(settings: Settings, user: User) -> bool:
+    """Whether `user` may open the operator dashboard (ARCHITECTURE §5.4)."""
+    if user.phone in settings.platform_admin_phones:
+        return True
+    return user.email is not None and user.email in settings.platform_admin_emails
+
+
+async def require_platform_admin(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """The operator dashboard: an active user listed in `PLATFORM_ADMIN_PHONES` / `_EMAILS`.
+
+    Platform-wide, so no business context is involved. Anyone else gets a 404, never a 403:
+    the endpoints must not confirm that they exist.
+    """
+    if not is_platform_admin(get_settings_dep(request), user):
+        raise NotFoundError("Not Found")
+    if user.must_change_password:
+        raise PermissionDeniedError(
+            "You must change your password before continuing", code="PASSWORD_CHANGE_REQUIRED"
+        )
+    return user

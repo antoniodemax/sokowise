@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router'
 import { BrandMark } from '@/components/brand'
 import { Spinner } from '@/components/ui/spinner'
 import { useAuth } from '@/features/auth/auth-context'
+import NotFoundPage from '@/features/placeholders/NotFoundPage'
 
 function Restoring() {
   return (
@@ -44,5 +45,12 @@ export function RequireOwner() {
       </div>
     )
   }
+  return <Outlet />
+}
+
+/** The operator dashboard: anyone without the server-granted flag sees the same not-found page as a bad link (the API answers 404 too). */
+export function RequirePlatformAdmin() {
+  const { session } = useAuth()
+  if (!session?.is_platform_admin) return <NotFoundPage />
   return <Outlet />
 }

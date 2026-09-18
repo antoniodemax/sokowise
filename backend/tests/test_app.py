@@ -51,6 +51,24 @@ def test_cors_origins_are_normalised_to_browser_origin_form(
     assert Settings().cors_origins == ["http://localhost:5173", "https://app.example.com"]
 
 
+def test_platform_admin_phones_are_split_and_normalised(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLATFORM_ADMIN_PHONES", "0712 345 678, +254700000001,")
+    assert Settings().platform_admin_phones == ["+254712345678", "+254700000001"]
+    monkeypatch.setenv("PLATFORM_ADMIN_PHONES", "")
+    assert Settings().platform_admin_phones == []
+    monkeypatch.setenv("PLATFORM_ADMIN_PHONES", "not-a-phone")
+    with pytest.raises(ValidationError, match="phone"):
+        Settings()
+
+
+def test_platform_admin_emails_are_split_and_lower_cased(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLATFORM_ADMIN_EMAILS", " Owner@Example.com ,ops@example.com,")
+    assert Settings().platform_admin_emails == ["owner@example.com", "ops@example.com"]
+    monkeypatch.setenv("PLATFORM_ADMIN_EMAILS", "not-an-email")
+    with pytest.raises(ValidationError, match="email"):
+        Settings()
+
+
 def test_production_settings_disable_interactive_docs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

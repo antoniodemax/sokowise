@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, LayoutDashboard, Package, Receipt, Settings, ShoppingCart, Smartphone, Sparkles, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, Boxes, LayoutDashboard, Package, Receipt, Settings, ShieldCheck, ShoppingCart, Smartphone, Sparkles, Users, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   to: string
@@ -6,6 +6,8 @@ export interface NavItem {
   icon: LucideIcon
   /** Only OWNER sees these (PRD §16); the backend enforces it regardless. */
   ownerOnly?: boolean
+  /** Only platform admins (session.is_platform_admin) see these; the backend answers 404 to anyone else. */
+  adminOnly?: boolean
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -19,4 +21,5 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/analytics', label: 'Analytics', icon: BarChart3, ownerOnly: true },
   { to: '/assistant', label: 'Copilot', icon: Sparkles, ownerOnly: true },
   { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true },
 ]

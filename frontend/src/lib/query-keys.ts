@@ -35,6 +35,7 @@ export const queryKeys = {
     reconciliation: (date: string) => ['mpesa', 'reconciliation', date] as const,
   },
   analytics: { all: ['analytics'] as const },
+  admin: { overview: ['admin', 'overview'] as const },
   business: { all: ['business'] as const },
   members: { all: ['members'] as const },
 }

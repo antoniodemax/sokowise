@@ -11,6 +11,7 @@ const owner: Session = {
   user: { id: 'u1', full_name: 'Amina', phone: '+254712345678', email: null, must_change_password: false },
   business: { id: 'b1', name: 'Amina Duka', business_type: 'GENERAL_SHOP', currency: 'KES', timezone: 'Africa/Nairobi', is_active: true },
   role: 'OWNER',
+  is_platform_admin: false,
 }
 
 function renderAt(path: string, session: Session | null, restoring = false) {

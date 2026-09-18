@@ -151,6 +151,9 @@ class MeResponse(BaseModel):
     user: UserOut
     business: BusinessOut
     role: MembershipRole
+    # Whether this user may open the operator dashboard (`PLATFORM_ADMIN_PHONES`). The
+    # frontend only uses it to show the route; the backend re-checks on every request.
+    is_platform_admin: bool = False
 
 
 class SessionResponse(MeResponse):

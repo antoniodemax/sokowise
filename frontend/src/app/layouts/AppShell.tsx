@@ -16,10 +16,10 @@ import { cn } from '@/lib/utils'
 
 import { NAV_ITEMS } from '../nav'
 
-function NavLinks({ role, onNavigate }: { role: 'OWNER' | 'STAFF'; onNavigate?: () => void }) {
+function NavLinks({ role, isAdmin, onNavigate }: { role: 'OWNER' | 'STAFF'; isAdmin: boolean; onNavigate?: () => void }) {
   return (
     <nav aria-label="Main" className="flex flex-col gap-1">
-      {NAV_ITEMS.filter((item) => !item.ownerOnly || role === 'OWNER').map((item) => (
+      {NAV_ITEMS.filter((item) => (!item.ownerOnly || role === 'OWNER') && (!item.adminOnly || isAdmin)).map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
@@ -130,7 +130,7 @@ export function AppShell() {
       <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card lg:sticky lg:top-0 lg:flex lg:h-dvh">
         <BusinessIdentity name={business.name} role={role} />
         <div className="flex-1 overflow-y-auto px-3">
-          <NavLinks role={role} />
+          <NavLinks role={role} isAdmin={session.is_platform_admin} />
         </div>
         <div className="border-t border-border p-2">{accountMenu}</div>
       </aside>
@@ -151,7 +151,7 @@ export function AppShell() {
           <SheetDescription className="sr-only">Move between SokoWise sections</SheetDescription>
           <BusinessIdentity name={business.name} role={role} onNavigate={() => setMenuOpen(false)} />
           <div className="flex-1 overflow-y-auto px-3">
-            <NavLinks role={role} onNavigate={() => setMenuOpen(false)} />
+            <NavLinks role={role} isAdmin={session.is_platform_admin} onNavigate={() => setMenuOpen(false)} />
           </div>
           <div className="border-t border-border p-2">{accountMenu}</div>
         </SheetContent>

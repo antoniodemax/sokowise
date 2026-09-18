@@ -10,6 +10,8 @@ from typing import Annotated, Literal
 from pydantic import Field, PostgresDsn, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.schemas.identifiers import normalize_email, normalize_phone
+
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 CookieSameSite = Literal["lax", "strict", "none"]
@@ -57,6 +59,14 @@ class Settings(BaseSettings):
     rate_limit_refresh_per_minute: int = Field(default=30, ge=1)
     rate_limit_password_change_per_minute: int = Field(default=5, ge=1)
 
+    # --- Platform admin (docs/ARCHITECTURE.md §5.4) ---
+    # Phone numbers (any accepted form; normalised to E.164) of the people who may open the
+    # operator dashboard at /api/v1/admin/*. Empty → those endpoints answer 404 for everyone.
+    # Read on every request; never stored in the database or the token.
+    platform_admin_phones: Annotated[list[str], NoDecode] = []
+    # Same, by email (lower-cased). A user matches if either their phone or email is listed.
+    platform_admin_emails: Annotated[list[str], NoDecode] = []
+
     # --- AI copilot (docs/ARCHITECTURE.md §6, PRD §20) ---
     # Unset → the copilot endpoints answer 503 AI_NOT_CONFIGURED; the rest of the app works.
     anthropic_api_key: SecretStr | None = None
@@ -102,6 +112,24 @@ class Settings(BaseSettings):
     @staticmethod
     def _normalise_origin(origin: object) -> str:
         return str(origin).strip().rstrip("/")
+
+    @field_validator("platform_admin_phones", mode="before")
+    @classmethod
+    def split_admin_phones(cls, value: object) -> object:
+        """Accept a comma-separated string; normalise each entry to E.164 (`+2547…`)."""
+        items = value.split(",") if isinstance(value, str) else value
+        if not isinstance(items, list | tuple):
+            return value
+        return [normalize_phone(str(item)) for item in items if str(item).strip()]
+
+    @field_validator("platform_admin_emails", mode="before")
+    @classmethod
+    def split_admin_emails(cls, value: object) -> object:
+        """Accept a comma-separated string; normalise each entry (trimmed, lower-cased)."""
+        items = value.split(",") if isinstance(value, str) else value
+        if not isinstance(items, list | tuple):
+            return value
+        return [normalize_email(str(item)) for item in items if str(item).strip()]
 
     @field_validator("cors_origins")
     @classmethod

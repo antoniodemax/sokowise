@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.admin import router as admin_router
 from app.api.v1.ai import router as ai_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
@@ -32,3 +33,4 @@ router.include_router(expenses_router)
 router.include_router(ai_router)
 router.include_router(receipts_router)
 router.include_router(mpesa_router)
+router.include_router(admin_router)

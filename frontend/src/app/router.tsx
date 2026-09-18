@@ -3,7 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router'
 
 import { Spinner } from '@/components/ui/spinner'
 
-import { RedirectIfAuthenticated, RequireAuth, RequireOwner } from './guards'
+import { RedirectIfAuthenticated, RequireAuth, RequireOwner, RequirePlatformAdmin } from './guards'
 import { AppShell } from './layouts/AppShell'
 import { AuthLayout } from './layouts/AuthLayout'
 
@@ -28,6 +28,7 @@ const ExpensesPage = lazy(() => import('@/features/expenses/ExpensesPage'))
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'))
 const AssistantPage = lazy(() => import('@/features/assistant/AssistantPage'))
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'))
+const AdminPage = lazy(() => import('@/features/admin/AdminPage'))
 const NotFoundPage = lazy(() => import('@/features/placeholders/NotFoundPage'))
 
 function PageFallback() {
@@ -75,6 +76,9 @@ export function AppRouter() {
                 <Route path="/assistant" element={<AssistantPage />} />
               </Route>
               <Route path="/settings" element={<SettingsPage />} />
+              <Route element={<RequirePlatformAdmin />}>
+                <Route path="/admin" element={<AdminPage />} />
+              </Route>
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Route>

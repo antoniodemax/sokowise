@@ -32,7 +32,15 @@ async def test_register_creates_user_business_and_owner_membership(
     assert response.status_code == HTTPStatus.CREATED, response.text
     body = response.json()
 
-    assert set(body) == {"access_token", "token_type", "expires_in", "user", "business", "role"}
+    assert set(body) == {
+        "access_token",
+        "token_type",
+        "expires_in",
+        "user",
+        "business",
+        "role",
+        "is_platform_admin",
+    }
     assert body["role"] == "OWNER"
     assert body["token_type"] == "bearer"  # noqa: S105
     assert body["expires_in"] == 15 * 60
@@ -57,7 +65,7 @@ async def test_register_creates_user_business_and_owner_membership(
         True,
     )
     user = await db_session.get(User, user_id)
-    assert user is not None
+    assert user is not None and user.password_hash is not None
     assert user.password_hash.startswith("$argon2id$")
     assert PASSWORD not in user.password_hash
 

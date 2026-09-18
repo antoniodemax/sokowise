@@ -32,12 +32,15 @@ export interface SessionResponse {
   user: SessionUser
   business: SessionBusiness
   role: Role
+  /** Operator dashboard access (PLATFORM_ADMIN_PHONES / PLATFORM_ADMIN_EMAILS on the server). Only hides the route; the backend re-checks. */
+  is_platform_admin?: boolean
 }
 
 export interface Session {
   user: SessionUser
   business: SessionBusiness
   role: Role
+  is_platform_admin: boolean
 }
 
 type Listener = (session: Session | null) => void
@@ -51,7 +54,7 @@ export const sessionStore = {
   get: (): Session | null => current,
   set(response: SessionResponse): Session {
     accessToken = response.access_token
-    current = { user: response.user, business: response.business, role: response.role }
+    current = { user: response.user, business: response.business, role: response.role, is_platform_admin: response.is_platform_admin === true }
     listeners.forEach((listener) => listener(current))
     return current
   },

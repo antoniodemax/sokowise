@@ -76,7 +76,7 @@ async def test_me_returns_the_verified_identity(api: AsyncClient) -> None:
     response = await api.get(ME_URL, headers=bearer(registered["access_token"]))
     assert response.status_code == HTTPStatus.OK
     body = response.json()
-    assert set(body) == {"user", "business", "role"}
+    assert set(body) == {"user", "business", "role", "is_platform_admin"}
     assert body["user"]["id"] == registered["user"]["id"]
     assert body["business"]["id"] == registered["business"]["id"]
     assert body["role"] == "OWNER"

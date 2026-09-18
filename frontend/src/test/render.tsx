@@ -11,6 +11,7 @@ export const ownerSession: Session = {
   user: { id: 'u-owner', full_name: 'Amina Wanjiru', phone: '+254712345678', email: null, must_change_password: false },
   business: { id: 'b1', name: 'Amina Duka', business_type: 'GENERAL_SHOP', currency: 'KES', timezone: 'Africa/Nairobi', is_active: true },
   role: 'OWNER',
+  is_platform_admin: false,
 }
 export const staffSession: Session = { ...ownerSession, user: { ...ownerSession.user, id: 'u-staff', full_name: 'Brian Staff' }, role: 'STAFF' }
 
