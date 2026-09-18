@@ -61,3 +61,10 @@ class PlatformOverviewOut(BaseModel):
     last_30_days: RecentOut
     signups_by_day: list[SignupBucketOut]
     businesses: list[BusinessRowOut]
+
+
+class BusinessDeletedOut(BaseModel):
+    business_id: uuid.UUID
+    name: str
+    users_deleted: int
+    receipt_images_deleted: int

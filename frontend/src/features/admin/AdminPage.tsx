@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Building2, MessageSquare, RefreshCw, ShoppingCart, Users, Wallet } from 'lucide-react'
+import { Activity, Building2, MessageSquare, RefreshCw, ShoppingCart, Trash2, Users, Wallet } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +18,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
 import { adminApi, type PlatformBusinessRow, type PlatformOverview } from './api'
+import { DeleteBusinessDialog } from './DeleteBusinessDialog'
 
 const TYPE_LABEL: Record<string, string> = Object.fromEntries(BUSINESS_TYPES.map((t) => [t.value, t.label]))
 
@@ -73,6 +75,7 @@ export default function AdminPage() {
 
 function Overview({ data }: { data: PlatformOverview }) {
   const { totals, last_7_days: week, last_30_days: month, timezone: tz } = data
+  const [deleting, setDeleting] = useState<PlatformBusinessRow | null>(null)
   const now = new Date(data.generated_at)
   const signups30 = data.signups_by_day.reduce((sum, d) => sum + d.businesses, 0)
   const maxSignups = Math.max(1, ...data.signups_by_day.map((d) => d.businesses))
@@ -162,6 +165,9 @@ function Overview({ data }: { data: PlatformOverview }) {
                   <div><dt className="text-muted-foreground">Sales</dt><dd className="tabular font-medium">{b.sales}</dd></div>
                   <div><dt className="text-muted-foreground">Last sale</dt><dd className="font-medium">{relative(b.last_sale_at, tz, now)}</dd></div>
                 </dl>
+                <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:bg-destructive-soft hover:text-destructive" aria-label={`Delete ${b.name}`} onClick={() => setDeleting(b)}>
+                  <Trash2 aria-hidden="true" /> Delete
+                </Button>
               </li>
             ))}
           </ul>
@@ -177,6 +183,7 @@ function Overview({ data }: { data: PlatformOverview }) {
                   <TableHead className="text-right">Sales</TableHead>
                   <TableHead>Last sale</TableHead>
                   <TableHead>Last sign-in</TableHead>
+                  <TableHead className="text-right"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -191,6 +198,11 @@ function Overview({ data }: { data: PlatformOverview }) {
                     <TableCell className="tabular text-right">{b.sales}</TableCell>
                     <TableCell title={b.last_sale_at ? formatDateTime(b.last_sale_at, tz) : undefined}>{relative(b.last_sale_at, tz, now)}</TableCell>
                     <TableCell title={b.last_login_at ? formatDateTime(b.last_login_at, tz) : undefined}>{relative(b.last_login_at, tz, now, 'not since sign-up')}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:bg-destructive-soft hover:text-destructive" aria-label={`Delete ${b.name}`} onClick={() => setDeleting(b)}>
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -202,6 +214,7 @@ function Overview({ data }: { data: PlatformOverview }) {
       <p className="text-xs text-muted-foreground">
         Figures at {formatDateTime(data.generated_at, tz)} · <Link to="/dashboard" className="text-primary hover:underline">Back to your own dashboard</Link>
       </p>
+      <DeleteBusinessDialog business={deleting} onOpenChange={(open) => !open && setDeleting(null)} />
     </div>
   )
 }

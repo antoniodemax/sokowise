@@ -1,11 +1,12 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { Route } from 'react-router'
 
 import { RequirePlatformAdmin } from '@/app/guards'
 import { AppShell } from '@/app/layouts/AppShell'
-import { mockApi, ownerSession, renderWithProviders } from '@/test/render'
+import { apiError, json, mockApi, ownerSession, renderWithProviders } from '@/test/render'
 
 import AdminPage from './AdminPage'
 
@@ -87,5 +88,41 @@ describe('AdminPage', () => {
     })
     expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Admin' }).length).toBeGreaterThan(0)
+  })
+
+  it('deletes a business only after the admin types its name, then refreshes the overview', async () => {
+    const api = mockApi({
+      'GET /api/v1/admin/overview': overview,
+      'DELETE /api/v1/admin/businesses/b2': () => json({ business_id: 'b2', name: 'Salon B', users_deleted: 1, receipt_images_deleted: 0 }),
+    })
+    renderWithProviders(<AdminPage />, { session: adminSession, path: '/admin', pattern: '/admin' })
+    await screen.findAllByText('Businesses')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Delete Salon B' })[0])
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Delete Salon B?' })).toBeInTheDocument()
+    const confirm = within(dialog).getByRole('button', { name: 'Delete business' })
+    expect(confirm).toBeDisabled()
+    await userEvent.type(within(dialog).getByLabelText('Type Salon B to confirm'), 'Salon')
+    expect(confirm).toBeDisabled()
+    await userEvent.type(within(dialog).getByLabelText('Type Salon B to confirm'), ' B')
+    expect(confirm).toBeEnabled()
+    await userEvent.click(confirm)
+    await waitFor(() => expect(api.of('DELETE', '/api/v1/admin/businesses/b2')).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(api.of('GET', '/api/v1/admin/overview').length).toBeGreaterThan(1)
+  })
+
+  it('shows the refusal when the admin tries to delete their own business', async () => {
+    mockApi({
+      'GET /api/v1/admin/overview': overview,
+      'DELETE /api/v1/admin/businesses/b1': () => apiError(409, 'OWN_BUSINESS', 'You belong to this business. Delete it from another admin account.'),
+    })
+    renderWithProviders(<AdminPage />, { session: adminSession, path: '/admin', pattern: '/admin' })
+    await screen.findAllByText('Businesses')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Delete Nairobi Test Shop A' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Type Nairobi Test Shop A to confirm'), 'Nairobi Test Shop A')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete business' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You belong to this business')
   })
 })

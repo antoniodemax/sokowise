@@ -393,7 +393,7 @@ Validation only, ahead of giving the staging URL to local business owners. Stagi
 
 ## Phase 19 — Operator dashboard ☑ (2026-09-18)
 
-A hidden `/admin` page for the platform operator: totals (businesses, people by role, products, customers, sales and money recorded, deni outstanding, M-Pesa messages, receipts, copilot use), 7- and 30-day activity, sign-ups per day for 30 days, and one row per business with counts and last activity. Access is an allowlist of phone numbers or emails in `PLATFORM_ADMIN_PHONES` / `PLATFORM_ADMIN_EMAILS`, checked server-side on every request; everyone else gets 404. No schema change; `app/analytics/platform.py` is the single cross-tenant aggregate module (ARCHITECTURE §5.4). Staging needs the variable set on Render before the page works there.
+A hidden `/admin` page for the platform operator: totals (businesses, people by role, products, customers, sales and money recorded, deni outstanding, M-Pesa messages, receipts, copilot use), 7- and 30-day activity, sign-ups per day for 30 days, and one row per business with counts and last activity. Access is an allowlist of phone numbers or emails in `PLATFORM_ADMIN_PHONES` / `PLATFORM_ADMIN_EMAILS`, checked server-side on every request; everyone else gets 404. No schema change; `app/analytics/platform.py` is the single cross-tenant aggregate module (ARCHITECTURE §5.4). Staging needs the variable set on Render before the page works there. Added later: the operator can delete a business account and everything it owns from the same page (type-the-name confirmation; ARCHITECTURE §5.4).
 
 ## Phase 20 — Sign in with Google and password reset by SMS ☑ (2026-09-18)
 

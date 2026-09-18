@@ -55,6 +55,15 @@ export interface PlatformOverview {
   businesses: PlatformBusinessRow[]
 }
 
+export interface BusinessDeleted {
+  business_id: string
+  name: string
+  users_deleted: number
+  receipt_images_deleted: number
+}
+
 export const adminApi = {
   overview: (signal?: AbortSignal) => request<PlatformOverview>('/api/v1/admin/overview', { signal }),
+  /** Irreversible: removes the business, everything it owns, and users who belonged only to it. */
+  deleteBusiness: (businessId: string) => request<BusinessDeleted>(`/api/v1/admin/businesses/${businessId}`, { method: 'DELETE' }),
 }
