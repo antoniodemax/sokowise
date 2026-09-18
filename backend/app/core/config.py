@@ -15,6 +15,7 @@ from app.schemas.identifiers import normalize_email, normalize_phone
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 CookieSameSite = Literal["lax", "strict", "none"]
+SmsProvider = Literal["none", "console", "africastalking"]
 
 
 class Settings(BaseSettings):
@@ -58,6 +59,22 @@ class Settings(BaseSettings):
     rate_limit_register_per_minute: int = Field(default=5, ge=1)
     rate_limit_refresh_per_minute: int = Field(default=30, ge=1)
     rate_limit_password_change_per_minute: int = Field(default=5, ge=1)
+
+    # --- Sign in with Google (docs/ARCHITECTURE.md §5.1) ---
+    # The OAuth "Web application" client id whose ID tokens we accept. Unset → the Google
+    # endpoints answer 503 GOOGLE_NOT_CONFIGURED and the frontend hides the button.
+    google_client_id: str | None = None
+
+    # --- SMS for password reset codes (docs/ARCHITECTURE.md §5.1) ---
+    # `none` → reset endpoints answer 503; `console` logs the message (development only,
+    # refused in production); `africastalking` sends through Africa's Talking.
+    sms_provider: SmsProvider = "none"
+    africastalking_username: str | None = None
+    africastalking_api_key: SecretStr | None = None
+    africastalking_sender_id: str | None = None
+    rate_limit_password_reset_per_minute: int = Field(default=5, ge=1)
+    rate_limit_password_reset_per_phone_per_minute: int = Field(default=3, ge=1)
+    rate_limit_password_reset_confirm_per_phone_per_minute: int = Field(default=10, ge=1)
 
     # --- Platform admin (docs/ARCHITECTURE.md §5.4) ---
     # Phone numbers (any accepted form; normalised to E.164) of the people who may open the
@@ -148,10 +165,29 @@ class Settings(BaseSettings):
         """`.env` files set optional values to an empty string; treat that as unset."""
         return value or None
 
-    @field_validator("anthropic_api_key", mode="before")
+    @field_validator(
+        "anthropic_api_key",
+        "google_client_id",
+        "africastalking_username",
+        "africastalking_api_key",
+        "africastalking_sender_id",
+        mode="before",
+    )
     @classmethod
     def blank_key_is_none(cls, value: object) -> object:
         return None if value == "" else value
+
+    @model_validator(mode="after")
+    def check_sms_provider(self) -> "Settings":
+        if self.sms_provider == "africastalking" and not (
+            self.africastalking_username and self.africastalking_api_key
+        ):
+            msg = "SMS_PROVIDER=africastalking needs AFRICASTALKING_USERNAME and _API_KEY"
+            raise ValueError(msg)
+        if self.sms_provider == "console" and self.is_production:
+            msg = "SMS_PROVIDER=console would log reset codes; not allowed in production"
+            raise ValueError(msg)
+        return self
 
     @field_validator("database_url")
     @classmethod

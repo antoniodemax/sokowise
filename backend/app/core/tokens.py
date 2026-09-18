@@ -21,6 +21,8 @@ from app.core.config import Settings
 
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TYPE = "access"  # noqa: S105 — a claim value, not a secret
+SIGNUP_TOKEN_TYPE = "google-signup"  # noqa: S105 — a claim value, not a secret
+SIGNUP_TOKEN_TTL = timedelta(minutes=15)
 _REQUIRED_CLAIMS = ("sub", "bid", "jti", "iat", "exp", "typ")
 
 
@@ -105,3 +107,57 @@ def generate_refresh_token() -> str:
 def hash_refresh_token(token: str) -> str:
     """SHA-256 hex digest; what `refresh_tokens.token_hash` stores (DATA_MAPPING §3.4)."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class SignupTokenClaims:
+    """A verified Google identity waiting for the finish-up form (ARCHITECTURE §5.1)."""
+
+    google_sub: str
+    email: str
+    name: str | None
+
+
+def create_signup_token(settings: Settings, claims: SignupTokenClaims) -> str:
+    """Short-lived HS256 token so the finish-up step cannot change the verified email."""
+    now = datetime.now(UTC)
+    payload: dict[str, object] = {
+        "sub": claims.google_sub,
+        "email": claims.email,
+        "name": claims.name,
+        "jti": uuid.uuid4().hex,
+        "iat": now,
+        "exp": now + SIGNUP_TOKEN_TTL,
+        "typ": SIGNUP_TOKEN_TYPE,
+    }
+    return jwt.encode(payload, settings.jwt_secret.get_secret_value(), algorithm=JWT_ALGORITHM)
+
+
+def decode_signup_token(settings: Settings, token: str) -> SignupTokenClaims:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret.get_secret_value(),
+            algorithms=[JWT_ALGORITHM],
+            options={"require": ["sub", "email", "exp", "typ"], "verify_aud": False},
+        )
+    except jwt.PyJWTError as exc:
+        raise InvalidTokenError from exc
+    if payload.get("typ") != SIGNUP_TOKEN_TYPE:
+        raise InvalidTokenError
+    name = payload.get("name")
+    return SignupTokenClaims(
+        google_sub=str(payload["sub"]),
+        email=str(payload["email"]),
+        name=str(name) if name else None,
+    )
+
+
+def generate_reset_code() -> str:
+    """Six digits from the OS CSPRNG (one million possibilities, 5 attempts, 10 minutes)."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_reset_code(user_id: uuid.UUID, code: str) -> str:
+    """SHA-256 of `user_id:code`; what `password_reset_codes.code_hash` stores."""
+    return hashlib.sha256(f"{user_id}:{code}".encode()).hexdigest()

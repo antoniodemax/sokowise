@@ -14,6 +14,7 @@ import { describeError, fieldErrors } from '@/lib/errors'
 
 import { BUSINESS_TYPES } from './api'
 import { useAuth } from './auth-context'
+import { GoogleButton } from './GoogleButton'
 
 // Mirrors the backend contract (PRD FR-A1, FR-B1): the server does the real
 // validation and phone normalisation; these checks only catch obvious slips early.
@@ -97,6 +98,7 @@ export default function RegisterPage() {
           Create business
         </Button>
       </form>
+      <GoogleButton label="signup_with" />
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Already have an account?{' '}
         <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">

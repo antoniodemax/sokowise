@@ -23,16 +23,24 @@ from app.api.deps import (
     require_csrf_header,
     require_trusted_origin,
 )
+from app.auth.google import GoogleTokenError, GoogleVerifier
 from app.core.config import Settings
 from app.core.context import BusinessContext, ClientInfo
-from app.core.errors import UnauthorizedError
+from app.core.errors import AppError, UnauthorizedError
 from app.db.session import get_session
 from app.models import User
+from app.notifications.sms import SmsSender
 from app.schemas.auth import (
     BusinessOut,
     ChangePasswordRequest,
+    GoogleRegisterRequest,
+    GoogleSignInRequest,
+    GoogleSignupPendingResponse,
     LoginRequest,
     MeResponse,
+    MessageResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequestRequest,
     RegisterRequest,
     SessionResponse,
     UserOut,
@@ -91,6 +99,36 @@ def _session_response(auth: AuthSession, settings: Settings) -> SessionResponse:
         role=auth.role,
         is_platform_admin=is_platform_admin(settings, auth.user),
     )
+
+
+class GoogleNotConfiguredError(AppError):
+    status_code = 503
+    code = "GOOGLE_NOT_CONFIGURED"
+
+
+class PasswordResetNotConfiguredError(AppError):
+    status_code = 503
+    code = "PASSWORD_RESET_NOT_CONFIGURED"
+
+
+def get_google_verifier(request: Request) -> GoogleVerifier:
+    verifier: GoogleVerifier | None = getattr(request.app.state, "google_verifier", None)
+    if verifier is None:
+        raise GoogleNotConfiguredError("Sign in with Google is not set up on this server yet.")
+    return verifier
+
+
+def get_sms_sender(request: Request) -> SmsSender:
+    sender: SmsSender | None = getattr(request.app.state, "sms_sender", None)
+    if sender is None:
+        raise PasswordResetNotConfiguredError(
+            "Password reset by SMS is not switched on in this version yet."
+        )
+    return sender
+
+
+GoogleVerifierDep = Annotated[GoogleVerifier, Depends(get_google_verifier)]
+SmsDep = Annotated[SmsSender, Depends(get_sms_sender)]
 
 
 @router.post(
@@ -232,4 +270,122 @@ async def me(
         business=BusinessOut.model_validate(business, from_attributes=True),
         role=ctx.role,
         is_platform_admin=is_platform_admin(settings, user),
+    )
+
+
+@router.post(
+    "/google",
+    response_model=SessionResponse | GoogleSignupPendingResponse,
+    dependencies=[Depends(require_trusted_origin)],
+)
+async def google_sign_in(
+    payload: GoogleSignInRequest,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+    client: ClientDep,
+    verifier: GoogleVerifierDep,
+) -> SessionResponse | GoogleSignupPendingResponse:
+    enforce_rate_limit(
+        request,
+        scope="login:ip",
+        key=client_ip(request),
+        limit=settings.rate_limit_login_per_minute,
+    )
+    try:
+        identity = verifier.verify(payload.credential)
+    except GoogleTokenError:
+        raise UnauthorizedError(
+            "Google did not confirm that account", code="GOOGLE_TOKEN_INVALID"
+        ) from None
+    result = await auth_service.google_sign_in(session, settings, identity, client)
+    if isinstance(result, auth_service.PendingGoogleSignup):
+        return GoogleSignupPendingResponse(
+            registration_token=result.registration_token, email=result.email, name=result.name
+        )
+    set_refresh_cookie(response, settings, result)
+    return _session_response(result, settings)
+
+
+@router.post(
+    "/google/register",
+    status_code=HTTPStatus.CREATED,
+    response_model=SessionResponse,
+    dependencies=[Depends(require_trusted_origin), Depends(get_google_verifier)],
+)
+async def google_register(
+    payload: GoogleRegisterRequest,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+    client: ClientDep,
+) -> SessionResponse:
+    enforce_rate_limit(
+        request,
+        scope="register:ip",
+        key=client_ip(request),
+        limit=settings.rate_limit_register_per_minute,
+    )
+    auth = await auth_service.google_register(session, settings, payload, client)
+    set_refresh_cookie(response, settings, auth)
+    return _session_response(auth, settings)
+
+
+@router.post(
+    "/password-reset/request",
+    status_code=HTTPStatus.ACCEPTED,
+    response_model=MessageResponse,
+    dependencies=[Depends(require_trusted_origin)],
+)
+async def password_reset_request(
+    payload: PasswordResetRequestRequest,
+    request: Request,
+    session: SessionDep,
+    settings: SettingsDep,
+    client: ClientDep,
+    sms: SmsDep,
+) -> MessageResponse:
+    _reset_rate_limits(request, settings, payload.phone, step="request")
+    await auth_service.request_password_reset(session, sms, payload.phone, client)
+    return MessageResponse(
+        message="If that phone number has an account, a code is on its way by SMS."
+    )
+
+
+@router.post(
+    "/password-reset/confirm",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_trusted_origin), Depends(get_sms_sender)],
+)
+async def password_reset_confirm(
+    payload: PasswordResetConfirmRequest,
+    request: Request,
+    session: SessionDep,
+    settings: SettingsDep,
+    client: ClientDep,
+) -> MessageResponse:
+    _reset_rate_limits(request, settings, payload.phone, step="confirm")
+    await auth_service.confirm_password_reset(
+        session, payload.phone, payload.code, payload.new_password, client
+    )
+    return MessageResponse(message="Your password is changed. Sign in with the new one.")
+
+
+def _reset_rate_limits(request: Request, settings: Settings, phone: str, *, step: str) -> None:
+    """Per IP for both steps; per phone: few SMS requests, more room for code typos."""
+    enforce_rate_limit(
+        request,
+        scope=f"password-reset-{step}:ip",
+        key=client_ip(request),
+        limit=settings.rate_limit_password_reset_per_minute,
+    )
+    enforce_rate_limit(
+        request,
+        scope=f"password-reset-{step}:phone",
+        key=phone.strip().lower(),
+        limit=settings.rate_limit_password_reset_per_phone_per_minute
+        if step == "request"
+        else settings.rate_limit_password_reset_confirm_per_phone_per_minute,
     )

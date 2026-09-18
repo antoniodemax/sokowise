@@ -14,23 +14,43 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.google import GoogleIdentity
 from app.core.config import Settings
 from app.core.context import BusinessContext, ClientInfo
 from app.core.errors import AppError, ConflictError, PermissionDeniedError, UnauthorizedError
 from app.core.passwords import DUMMY_PASSWORD_HASH, hash_password, needs_rehash, verify_password
-from app.core.tokens import create_access_token, generate_refresh_token, hash_refresh_token
+from app.core.tokens import (
+    InvalidTokenError,
+    SignupTokenClaims,
+    create_access_token,
+    create_signup_token,
+    decode_signup_token,
+    generate_refresh_token,
+    generate_reset_code,
+    hash_refresh_token,
+    hash_reset_code,
+)
 from app.db.session import transaction
 from app.models import Business, BusinessMembership, User
 from app.models.enums import MembershipRole
+from app.notifications.sms import SmsDeliveryError, SmsSender
 from app.repositories import businesses as business_repo
+from app.repositories import password_resets as reset_repo
 from app.repositories import refresh_tokens as token_repo
 from app.repositories import users as user_repo
-from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    GoogleRegisterRequest,
+    LoginRequest,
+    RegisterRequest,
+)
 from app.schemas.identifiers import looks_like_email, normalize_email, normalize_phone
+from app.services import audit
+from app.services.audit import AuditAction
 
 logger = logging.getLogger(__name__)
 
-_USER_UNIQUE_CONSTRAINTS = ("uq_users_phone", "uq_users_email")
+_USER_UNIQUE_CONSTRAINTS = ("uq_users_phone", "uq_users_email", "uq_users_google_sub")
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,17 +149,30 @@ async def register(
     and email is left to the database constraints, so two concurrent registrations
     with the same phone cannot both succeed.
     """
+    user = User(
+        phone=data.phone,
+        email=data.email,
+        full_name=data.full_name,
+        password_hash=hash_password(data.password),
+    )
+    business = Business(
+        name=data.business_name, business_type=data.business_type, timezone=data.timezone
+    )
+    return await _create_owner_account(
+        session, settings, user=user, business=business, client=client
+    )
+
+
+async def _create_owner_account(
+    session: AsyncSession,
+    settings: Settings,
+    *,
+    user: User,
+    business: Business,
+    client: ClientInfo,
+) -> AuthSession:
     try:
         async with transaction(session):
-            user = User(
-                phone=data.phone,
-                email=data.email,
-                full_name=data.full_name,
-                password_hash=hash_password(data.password),
-            )
-            business = Business(
-                name=data.business_name, business_type=data.business_type, timezone=data.timezone
-            )
             session.add_all([user, business])
             await session.flush()
             session.add(
@@ -189,6 +222,12 @@ async def login(
             # Same cost as a real verification so timing does not reveal unknown accounts.
             verify_password(DUMMY_PASSWORD_HASH, data.password)
             logger.warning("login failed", extra={"reason": "unknown_identifier"})
+            raise _invalid_credentials()
+        if user.password_hash is None:
+            # A Google-only account: same cost and same answer as a wrong password, so the
+            # response never reveals how the account was created.
+            verify_password(DUMMY_PASSWORD_HASH, data.password)
+            logger.warning("login failed", extra={"reason": "no_password", "user_id": str(user.id)})
             raise _invalid_credentials()
         if not verify_password(user.password_hash, data.password):
             logger.warning(
@@ -309,7 +348,9 @@ async def change_password(
     they are not logged out themselves.
     """
     async with transaction(session):
-        if not verify_password(user.password_hash, data.current_password):
+        if user.password_hash is None or not verify_password(
+            user.password_hash, data.current_password
+        ):
             raise InvalidCurrentPasswordError("Current password is incorrect")
         membership, business = await _resolve_active_membership(session, user)
         user.password_hash = hash_password(data.new_password)
@@ -326,3 +367,194 @@ async def change_password(
         )
     logger.info("password changed", extra={"user_id": str(user.id)})
     return auth
+
+
+# --- Sign in with Google (ARCHITECTURE §5.1) ---
+
+
+@dataclass(frozen=True, slots=True)
+class PendingGoogleSignup:
+    """A verified Google identity with no SokoWise account yet: finish-up form needed."""
+
+    registration_token: str
+    email: str
+    name: str | None
+
+
+class InvalidSignupTokenError(UnauthorizedError):
+    code = "SIGNUP_TOKEN_INVALID"
+
+
+async def google_sign_in(
+    session: AsyncSession, settings: Settings, identity: GoogleIdentity, client: ClientInfo
+) -> AuthSession | PendingGoogleSignup:
+    """Open a session for the account linked to this Google identity, linking by verified
+    email on first use; otherwise hand back a short-lived signup token."""
+    try:
+        email = normalize_email(identity.email)
+    except ValueError:
+        raise _invalid_credentials() from None
+    async with transaction(session):
+        user = await user_repo.get_user_by_google_sub(session, identity.sub)
+        if user is None:
+            user = await user_repo.get_user_by_email(session, email)
+            if user is not None and user.google_sub is None:
+                user.google_sub = identity.sub
+                logger.info("google identity linked", extra={"user_id": str(user.id)})
+        if user is None:
+            claims = SignupTokenClaims(google_sub=identity.sub, email=email, name=identity.name)
+            return PendingGoogleSignup(
+                registration_token=create_signup_token(settings, claims),
+                email=email,
+                name=identity.name,
+            )
+        if not user.is_active:
+            logger.warning(
+                "login failed", extra={"reason": "user_inactive", "user_id": str(user.id)}
+            )
+            raise _invalid_credentials()
+        membership, business = await _resolve_active_membership(session, user)
+        user.last_login_at = datetime.now(UTC)
+        auth = await _issue_session(
+            session, settings, user=user, business=business, role=membership.role, client=client
+        )
+    logger.info(
+        "login succeeded",
+        extra={"user_id": str(user.id), "business_id": str(business.id), "method": "google"},
+    )
+    return auth
+
+
+async def google_register(
+    session: AsyncSession, settings: Settings, data: GoogleRegisterRequest, client: ClientInfo
+) -> AuthSession:
+    """Finish a Google sign-up: the email comes from the signed token, never the form."""
+    try:
+        claims = decode_signup_token(settings, data.registration_token)
+    except InvalidTokenError:
+        raise InvalidSignupTokenError("Start again with the Google button") from None
+    user = User(
+        phone=data.phone,
+        email=claims.email,
+        full_name=data.full_name or claims.name or claims.email.split("@")[0],
+        password_hash=None,
+        google_sub=claims.google_sub,
+    )
+    business = Business(
+        name=data.business_name, business_type=data.business_type, timezone=data.timezone
+    )
+    return await _create_owner_account(
+        session, settings, user=user, business=business, client=client
+    )
+
+
+# --- Self-service password reset by SMS (ARCHITECTURE §5.1) ---
+
+RESET_CODE_TTL = timedelta(minutes=10)
+
+
+class ResetCodeError(AppError):
+    status_code = 400
+    code = "RESET_CODE_INVALID"
+
+
+class SmsUnavailableError(AppError):
+    status_code = 503
+    code = "SMS_UNAVAILABLE"
+
+
+def _reset_sms_text(code: str) -> str:
+    return (
+        f"SokoWise: your code is {code}. It expires in 10 minutes. "
+        "If you did not ask for it, ignore this message."
+    )
+
+
+async def request_password_reset(
+    session: AsyncSession, sms: SmsSender, phone: str, client: ClientInfo
+) -> None:
+    """Send a code when the phone belongs to an active account; silent otherwise.
+
+    The caller always answers 202, so the response never reveals whether a phone is
+    registered. The SMS is sent after the row is committed; a delivery failure is
+    reported (503) because the person is waiting for it.
+    """
+    try:
+        normalized = normalize_phone(phone)
+    except ValueError:
+        return
+    async with transaction(session):
+        user = await user_repo.get_user_by_phone(session, normalized)
+        if user is None or not user.is_active:
+            logger.info("password reset requested", extra={"reason": "unknown_or_inactive"})
+            return
+        await reset_repo.expire_open_codes(session, user.id)
+        code = generate_reset_code()
+        await reset_repo.create_code(
+            session,
+            user_id=user.id,
+            code_hash=hash_reset_code(user.id, code),
+            expires_at=datetime.now(UTC) + RESET_CODE_TTL,
+            ip=client.ip[:45] if client.ip else None,
+        )
+    try:
+        await sms.send(normalized, _reset_sms_text(code))
+    except SmsDeliveryError:
+        raise SmsUnavailableError(
+            "We could not send the SMS right now. Please try again in a few minutes."
+        ) from None
+    logger.info("password reset requested", extra={"user_id": str(user.id)})
+
+
+async def confirm_password_reset(
+    session: AsyncSession, phone: str, code: str, new_password: str, client: ClientInfo
+) -> None:
+    """Set the password when `code` is the live code for `phone`; count wrong guesses.
+
+    Every failure answers the same 400 RESET_CODE_INVALID. Success revokes every session
+    (like a password change) and clears `must_change_password`; a Google-only account
+    gets its first password this way.
+    """
+    invalid = ResetCodeError("That code is not valid. Ask for a new one.")
+    try:
+        normalized = normalize_phone(phone)
+    except ValueError:
+        raise invalid from None
+    async with transaction(session):
+        user = await user_repo.get_user_by_phone(session, normalized)
+        if user is None or not user.is_active:
+            raise invalid
+        consumed = await reset_repo.consume(
+            session, user_id=user.id, code_hash=hash_reset_code(user.id, code)
+        )
+    if consumed is None:
+        # Counted in its own transaction so the guess is kept even though we then fail.
+        async with transaction(session):
+            open_code = await reset_repo.latest_open_code(session, user.id)
+            if open_code is not None:
+                await reset_repo.count_attempt(session, open_code.id)
+        logger.warning("password reset failed", extra={"user_id": str(user.id)})
+        raise invalid
+    async with transaction(session):
+        user.password_hash = hash_password(new_password)
+        user.must_change_password = False
+        await session.flush()
+        await token_repo.revoke_all_for_user(session, user.id)
+        membership, _ = await _resolve_active_membership(session, user)
+        await audit.record(
+            session,
+            BusinessContext(
+                user_id=user.id,
+                business_id=membership.business_id,
+                membership_id=membership.id,
+                role=membership.role,
+                timezone="UTC",
+                settings={},
+            ),
+            action=AuditAction.USER_PASSWORD_RESET,
+            entity_type="user",
+            entity_id=user.id,
+            after={"method": "sms_code"},
+            client=client,
+        )
+    logger.info("password reset completed", extra={"user_id": str(user.id)})

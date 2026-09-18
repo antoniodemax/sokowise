@@ -16,12 +16,14 @@ from app.ai.provider import build_provider
 from app.ai.receipts import build_receipt_provider
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
+from app.auth.google import build_google_verifier
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.ratelimit import RateLimiter
 from app.db.session import create_engine, create_session_factory
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIDMiddleware
+from app.notifications.sms import build_sms_sender
 from app.storage import LocalFileStorage
 
 logger = logging.getLogger(__name__)
@@ -94,6 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.rate_limiter = RateLimiter()
     # The copilot's model client; None until ANTHROPIC_API_KEY is configured (§6).
     app.state.ai_provider = build_provider(settings)
+    app.state.google_verifier = build_google_verifier(settings)
+    app.state.sms_sender = build_sms_sender(settings)
     # Supplier receipts: blob storage plus the image→structure provider (§6.7).
     storage = LocalFileStorage(settings.receipt_storage_dir)
     storage.ensure_ready()  # a bad RECEIPT_STORAGE_DIR fails here, not on the first upload

@@ -14,6 +14,8 @@ function renderLogin(overrides: Partial<AuthContextValue> = {}) {
     login: vi.fn(),
     register: vi.fn(),
     changePassword: vi.fn(),
+    signInWithGoogle: vi.fn(),
+    registerWithGoogle: vi.fn(),
     logout: vi.fn(),
     logoutAll: vi.fn(),
     ...overrides,
@@ -66,5 +68,11 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid phone/email or password')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts')
+  })
+
+  it('offers "Forgot password?" and hides the Google button when no client id is configured', () => {
+    renderLogin()
+    expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password')
+    expect(screen.queryByTestId('google-button')).not.toBeInTheDocument()
   })
 })

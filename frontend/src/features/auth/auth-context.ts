@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 
 import type { Session } from '@/lib/session'
 
-import type { ChangePasswordRequest, LoginRequest, RegisterRequest } from './api'
+import type { ChangePasswordRequest, GoogleRegisterRequest, GoogleSignupPending, LoginRequest, RegisterRequest } from './api'
 
 export interface AuthContextValue {
   session: Session | null
@@ -11,6 +11,9 @@ export interface AuthContextValue {
   login: (body: LoginRequest) => Promise<Session>
   register: (body: RegisterRequest) => Promise<Session>
   changePassword: (body: ChangePasswordRequest) => Promise<Session>
+  /** A session when the Google account is known, or the pending sign-up to finish. */
+  signInWithGoogle: (credential: string) => Promise<Session | GoogleSignupPending>
+  registerWithGoogle: (body: GoogleRegisterRequest) => Promise<Session>
   logout: () => Promise<void>
   logoutAll: () => Promise<void>
 }

@@ -153,7 +153,8 @@ Requirement IDs are stable; reference them from tests and commits.
 - FR-B3. Refresh tokens are single-use, rotated on refresh, and revocable (logout, logout-all).
 - FR-B4. Passwords are hashed with Argon2id.
 - FR-B5. Rate limiting on login and registration endpoints.
-- FR-B6. Password reset — **OPEN QUESTION** (see §19): MVP ships owner-initiated staff password reset; self-service reset requires an SMS/email provider not yet chosen.
+- FR-B6 (as built 2026-09-18). Self-service password reset by **SMS code**: the person enters their phone; if it belongs to an active account a 6-digit code is sent (Africa's Talking), valid 10 minutes, 5 guesses, single use; confirming sets the new password and signs every device out. The response never says whether the phone is registered. Until the SMS provider is configured the screen says reset is not switched on yet. Owner-initiated staff reset remains.
+- FR-B7 (as built 2026-09-18). **Sign in with Google.** The browser gets an ID token from Google; the backend verifies it (signature, audience, issuer, verified email). A known account (by Google id, or first time by verified email) signs in; a new person completes a short finish-up form (phone, business name, type) and gets an account with no password (Google-only, until they set one through FR-B6). Hidden until a Google client id is configured.
 
 ### FR-C Users & roles
 - FR-C1. OWNER can create a STAFF user for their business (name, phone, initial password). The new user has `must_change_password=true` and must set a new password at first login before any other endpoint is available. If the phone number already belongs to a user, creation returns 409 (one business per user in MVP, FR-A4).
@@ -464,13 +465,14 @@ Requirements:
 This section is the honest map between this document and the code. "IMPLEMENTED" means built and covered by the automated suites (backend against a real PostgreSQL, frontend with Vitest) and, where noted, walked through in a browser. Nothing here claims a production deployment exists.
 
 ### IMPLEMENTED
-- Business account and authentication (FR-A, FR-B1–B5; FR-B6 as owner-initiated staff reset only), users and roles with the §16 matrix enforced server-side (FR-C), audit rows for the FR-K1 list plus inventory/credit/receipt actions.
+- Business account and authentication (FR-A, FR-B1–B7; SMS reset and Google sign-in need their providers configured on the server), users and roles with the §16 matrix enforced server-side (FR-C), audit rows for the FR-K1 list plus inventory/credit/receipt actions.
 - Products, categories, inventory (FR-D, FR-E; incl. opening stock, restock with optional cost update, adjustments, low stock, movement history, stock-cache recompute).
 - Sales and payments (FR-F1–F9; idempotency, discount allocation BR-9/BR-14, voids that reverse stock and credit).
 - Customers and credit (FR-G1–G5; ledger as source of truth, balance cache recompute `POST /customers/recompute`). Customer edit/archive and PII deletion (NFR-7) are **not** built.
 - Expenses (FR-H) with soft delete and CSV export; analytics (FR-I1–I7) in the business timezone.
 - AI copilot (FR-J1–J8, AI-1–AI-8 quotas, AI-10, AI-13, AI-14) — read-only tools, tenant scoped, whole-answer responses (no streaming, AI-9 open), no enforced global spend cap. Copilot proposals with owner confirmation (FR-J7 as built): covered by the backend suite with a fake provider; the live model behaviour (choosing to propose, resolving ids first) needs Anthropic billing to verify and has not been observed yet.
 - Simple start (FR-N1–N5): starter catalogue per business type, bulk add, setup card, simplified product form, "Other item" quick sale, plain-words dashboard.
+- Operator dashboard (`/admin`, ROADMAP Phase 19): platform-wide counts for the people listed in `PLATFORM_ADMIN_PHONES`; not a product feature for businesses, and it exposes no tenant records.
 - Supplier receipt intelligence (FR-L1–L7) — upload, validation, private storage, extraction pipeline, conservative matching, owner review and atomic confirmation into inventory.
 - Data exports (NFR-12): expenses, sales and customers CSV.
 - M-Pesa SMS matching (FR-M1–M5): paste or share a confirmation SMS, automatic linking by code in both directions, suggestions, owner ignore, daily received-vs-recorded summary, Android share target via the web manifest.
@@ -478,7 +480,6 @@ This section is the honest map between this document and the code. "IMPLEMENTED"
 - Operational: structured JSON logs with request ids, error envelope with no internals, in-process rate limits on auth and AI endpoints, `/health/live` and `/health/ready` (database + migration head; receipt storage reported), Sentry initialisation when `SENTRY_DSN` is set, production start-up guards (secure cookies, no wildcard CORS, no placeholder JWT secret, absolute receipt storage path).
 
 ### PLANNED (not built)
-- Password self-service reset (FR-B6) — needs an SMS/email provider.
 - Customer edit/archive and PII deletion on request (FR-G1 "CRUD", NFR-7).
 - Streaming copilot answers (AI-9) and the global AI spend cap with 80 % alert (AI-8, FR-J6 "global cost cap").
 - M-Pesa SMS → expense draft (US-18 second half); M-Pesa Daraja (FR-M6); WhatsApp; offline sync; PWA service worker/offline (the manifest and share target exist); Swahili UI; multi-branch; suppliers; eTIMS (§10).

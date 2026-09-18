@@ -16,7 +16,7 @@ function renderAt(path: string, session: Session | null) {
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => new Response(JSON.stringify(String(input).includes('/analytics/summary') ? summary : []), { status: 200, headers: { 'Content-Type': 'application/json' } })))
   if (session) sessionStore.set({ access_token: 't', token_type: 'bearer', expires_in: 900, ...session } as SessionResponse)
   else sessionStore.clear()
-  const auth: AuthContextValue = { session, restoring: false, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
+  const auth: AuthContextValue = { session, restoring: false, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), signInWithGoogle: vi.fn(), registerWithGoogle: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
   return render(
     <AppProviders>
       <AuthContext.Provider value={auth}>

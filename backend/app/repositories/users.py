@@ -27,6 +27,10 @@ async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     return (await session.scalars(select(User).where(User.email == email))).one_or_none()
 
 
+async def get_user_by_google_sub(session: AsyncSession, google_sub: str) -> User | None:
+    return (await session.scalars(select(User).where(User.google_sub == google_sub))).one_or_none()
+
+
 async def get_membership(
     session: AsyncSession, *, user_id: uuid.UUID, business_id: uuid.UUID
 ) -> BusinessMembership | None:

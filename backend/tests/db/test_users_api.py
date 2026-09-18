@@ -166,7 +166,8 @@ async def test_owner_creates_staff_who_must_change_password(
     assert PASSWORD not in response.text and "password_hash" not in response.text
 
     user = await db_session.get(User, uuid.UUID(body["user_id"]))
-    assert user is not None and verify_password(user.password_hash, PASSWORD)
+    assert user is not None and user.password_hash is not None
+    assert verify_password(user.password_hash, PASSWORD)
     membership = (
         await db_session.scalars(
             select(BusinessMembership).where(BusinessMembership.user_id == user.id)
@@ -390,6 +391,7 @@ async def test_owner_resets_a_staff_password(
     assert response.status_code == HTTPStatus.NO_CONTENT, response.text
     await db_session.refresh(staff_user)
     assert staff_user.password_hash != old_hash
+    assert staff_user.password_hash is not None
     assert verify_password(staff_user.password_hash, OTHER_PASSWORD)
     assert staff_user.must_change_password is True
     assert await _live_tokens(db_session, a.staff_user_id) == 0

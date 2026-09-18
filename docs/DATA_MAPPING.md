@@ -85,7 +85,8 @@ A person who can log in. Not tenant-scoped itself; scoped through memberships.
 | phone | VARCHAR(20) NOT NULL UNIQUE | E.164, normalised (`+2547…`). Primary login identifier. |
 | email | VARCHAR(255) NULL UNIQUE | Optional secondary login identifier, lower-cased |
 | full_name | VARCHAR(120) NOT NULL | |
-| password_hash | VARCHAR(255) NOT NULL | Argon2id encoded string |
+| password_hash | VARCHAR(255) NULL | Argon2id encoded string; NULL for a Google-only account that has not set a password (password login never succeeds for it) |
+| google_sub | VARCHAR(255) NULL UNIQUE | Google's stable subject id once the account is linked to a Google identity |
 | is_active | BOOLEAN NOT NULL DEFAULT true | Global deactivation |
 | must_change_password | BOOLEAN NOT NULL DEFAULT false | Set true when an OWNER creates a STAFF user or resets their password; login succeeds but every endpoint except change-password and logout returns 403 until the user sets a new password |
 | last_login_at | TIMESTAMPTZ NULL | |
@@ -413,6 +414,20 @@ CHECKs: `MATCHED` links exactly one of `payment_id` / `credit_transaction_id`, o
 | created_at | | |
 
 Append-only. Written by services inside the same transaction as the change.
+
+### 3.20 password_reset_codes
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| user_id | UUID NOT NULL FK users | |
+| code_hash | VARCHAR(64) NOT NULL | SHA-256 of `user_id:code`; the 6-digit code itself is never stored |
+| expires_at | TIMESTAMPTZ NOT NULL | 10 minutes after creation; a newer request expires older live codes |
+| attempts | SMALLINT NOT NULL default 0 | wrong guesses; 5 burns the code |
+| used_at | TIMESTAMPTZ NULL | set by the single atomic consume on success |
+| ip | VARCHAR(45) NULL | requester's address |
+| created_at | | |
+
+Index `(user_id, created_at)`. Rows are kept as an audit trail of reset attempts.
 
 ## 4. Relationship diagram
 

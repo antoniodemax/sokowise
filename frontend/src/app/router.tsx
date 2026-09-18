@@ -10,6 +10,8 @@ import { AuthLayout } from './layouts/AuthLayout'
 const LoginPage = lazy(() => import('@/features/auth/LoginPage'))
 const RegisterPage = lazy(() => import('@/features/auth/RegisterPage'))
 const ChangePasswordPage = lazy(() => import('@/features/auth/ChangePasswordPage'))
+const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage'))
+const GoogleRegisterPage = lazy(() => import('@/features/auth/GoogleRegisterPage'))
 const HomePage = lazy(() => import('@/features/marketing/HomePage'))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
 const SalesPage = lazy(() => import('@/features/sales/SalesPage'))
@@ -50,6 +52,8 @@ export function AppRouter() {
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/register/google" element={<GoogleRegisterPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             </Route>
           </Route>
           <Route element={<RequireAuth />}>

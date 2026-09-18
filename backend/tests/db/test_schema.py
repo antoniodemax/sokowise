@@ -120,7 +120,12 @@ def test_parents_of_composite_fks_have_id_business_id_unique(
 def test_authentication_columns(schema: dict[str, Any]) -> None:
     users = schema["users"]["columns"]
     assert users["must_change_password"]["nullable"] is False
-    assert users["password_hash"]["nullable"] is False
+    # NULL for Google-only accounts (DATA_MAPPING §3.2); password login refuses those.
+    assert users["password_hash"]["nullable"] is True
+    assert users["google_sub"]["nullable"] is True
+    assert ("google_sub",) in schema["users"]["uniques"] or _index(
+        schema, "users", "uq_users_google_sub"
+    )
     assert ("phone",) in schema["users"]["uniques"] or _index(schema, "users", "uq_users_phone")
     tokens = schema["refresh_tokens"]["columns"]
     assert tokens["family_id"]["nullable"] is False

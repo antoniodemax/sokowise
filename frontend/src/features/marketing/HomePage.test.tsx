@@ -11,7 +11,7 @@ import HomePage from './HomePage'
 function renderHome(session: AuthContextValue['session'] = null) {
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
-  const auth: AuthContextValue = { session, restoring: false, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
+  const auth: AuthContextValue = { session, restoring: false, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), signInWithGoogle: vi.fn(), registerWithGoogle: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
   render(
     <AuthContext.Provider value={auth}>
       <MemoryRouter initialEntries={['/']}>

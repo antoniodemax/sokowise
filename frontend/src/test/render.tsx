@@ -22,7 +22,7 @@ export function renderWithProviders(
 ) {
   sessionStore.set({ access_token: 'token', token_type: 'bearer', expires_in: 900, ...session } as SessionResponse)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } })
-  const auth: AuthContextValue = { session, restoring: false, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
+  const auth: AuthContextValue = { session, restoring: false, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), signInWithGoogle: vi.fn(), registerWithGoogle: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
   return render(
     <QueryClientProvider client={client}>
       <AuthContext.Provider value={auth}>

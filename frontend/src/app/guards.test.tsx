@@ -15,7 +15,7 @@ const owner: Session = {
 }
 
 function renderAt(path: string, session: Session | null, restoring = false) {
-  const value: AuthContextValue = { session, restoring, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
+  const value: AuthContextValue = { session, restoring, login: vi.fn(), register: vi.fn(), changePassword: vi.fn(), signInWithGoogle: vi.fn(), registerWithGoogle: vi.fn(), logout: vi.fn(), logoutAll: vi.fn() }
   render(
     <AuthContext.Provider value={value}>
       <MemoryRouter initialEntries={[path]}>

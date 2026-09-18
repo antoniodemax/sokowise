@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { describeError } from '@/lib/errors'
 
 import { useAuth } from './auth-context'
+import { GoogleButton } from './GoogleButton'
 
 const schema = z.object({
   identifier: z.string().trim().min(1, 'Enter your phone number or email'),
@@ -63,10 +64,16 @@ export default function LoginPage() {
             {...register('password')}
           />
         </Field>
+        <p className="text-right text-sm">
+          <Link to="/forgot-password" className="font-medium text-primary underline-offset-4 hover:underline">
+            Forgot password?
+          </Link>
+        </p>
         <Button type="submit" className="w-full" size="lg" loading={formState.isSubmitting}>
           Sign in
         </Button>
       </form>
+      <GoogleButton label="signin_with" />
       <p className="mt-6 text-center text-sm text-muted-foreground">
         New to SokoWise?{' '}
         <Link to="/register" className="font-medium text-primary underline-offset-4 hover:underline">

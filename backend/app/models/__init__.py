@@ -12,7 +12,7 @@ from app.models.inventory import InventoryMovement
 from app.models.mpesa import MpesaMessage
 from app.models.receipt import Receipt, ReceiptLine
 from app.models.sale import Payment, Sale, SaleItem
-from app.models.user import BusinessMembership, RefreshToken, User
+from app.models.user import BusinessMembership, PasswordResetCode, RefreshToken, User
 
 __all__ = [
     "AIConversation",
@@ -27,6 +27,7 @@ __all__ = [
     "Expense",
     "InventoryMovement",
     "MpesaMessage",
+    "PasswordResetCode",
     "Payment",
     "Product",
     "Receipt",

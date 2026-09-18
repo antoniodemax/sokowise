@@ -62,7 +62,7 @@ async def test_change_password_rehashes_and_replaces_sessions(
     assert OTHER_PASSWORD not in response.text and PASSWORD not in response.text
 
     await db_session.refresh(user)
-    assert user.password_hash != old_hash
+    assert user.password_hash is not None and user.password_hash != old_hash
     assert user.password_hash.startswith("$argon2id$")
     assert verify_password(user.password_hash, OTHER_PASSWORD)
     assert not verify_password(user.password_hash, PASSWORD)
@@ -117,7 +117,8 @@ async def test_wrong_current_password_is_rejected_and_changes_nothing(
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert error_code(response) == "INVALID_CURRENT_PASSWORD"
     user = await db_session.get(User, uuid.UUID(registered["user"]["id"]))
-    assert user is not None and verify_password(user.password_hash, PASSWORD)
+    assert user is not None and user.password_hash is not None
+    assert verify_password(user.password_hash, PASSWORD)
     assert refresh_cookie(api) == cookie
     assert (await refresh(api)).status_code == HTTPStatus.OK  # session untouched
 

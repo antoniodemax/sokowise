@@ -72,6 +72,15 @@ class _StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+def _validate_timezone(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        msg = "timezone must be an IANA time zone name, e.g. Africa/Nairobi"
+        raise ValueError(msg) from exc
+    return value
+
+
 class RegisterRequest(_StrictRequest):
     full_name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=7, max_length=20)
@@ -99,12 +108,63 @@ class RegisterRequest(_StrictRequest):
     @field_validator("timezone")
     @classmethod
     def _timezone(cls, value: str) -> str:
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
-            msg = "timezone must be an IANA time zone name, e.g. Africa/Nairobi"
-            raise ValueError(msg) from exc
-        return value
+        return _validate_timezone(value)
+
+
+class GoogleSignInRequest(_StrictRequest):
+    # The ID token from Google Identity Services; verified server-side.
+    credential: str = Field(min_length=20, max_length=4096)
+
+
+class GoogleRegisterRequest(_StrictRequest):
+    """Finish-up form after a Google sign-in with no account (ARCHITECTURE §5.1).
+
+    The email and Google subject come from the signed `registration_token`, never from
+    the form. There is no password: the account is Google-only until one is set.
+    """
+
+    registration_token: str = Field(min_length=20, max_length=4096)
+    phone: str = Field(min_length=7, max_length=20)
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
+    business_name: str = Field(min_length=1, max_length=120)
+    business_type: BusinessType = BusinessType.GENERAL_SHOP
+    timezone: str = Field(default="Africa/Nairobi", max_length=64)
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: str) -> str:
+        return normalize_phone(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str) -> str:
+        return _validate_timezone(value)
+
+
+class GoogleSignupPendingResponse(BaseModel):
+    status: Literal["needs_registration"] = "needs_registration"
+    registration_token: str
+    email: str
+    name: str | None
+
+
+class PasswordResetRequestRequest(_StrictRequest):
+    phone: str = Field(min_length=7, max_length=20)
+
+
+class PasswordResetConfirmRequest(_StrictRequest):
+    phone: str = Field(min_length=7, max_length=20)
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
+    new_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+    @field_validator("new_password")
+    @classmethod
+    def _password(cls, value: str) -> str:
+        return validate_new_password(value)
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 class LoginRequest(_StrictRequest):
