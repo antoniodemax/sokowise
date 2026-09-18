@@ -382,9 +382,21 @@ Tools are declared once with `strict: true` JSON schemas generated from Pydantic
 - **Not streamed yet:** the answer is returned once complete (one JSON response). SSE streaming, the eval set with recorded tool outputs and the nightly live run, cost-per-message measurement and the global monthly spend cap remain open (see ROADMAP).
 - **Frontend:** `/assistant` (`features/assistant/`, nav "Copilot", OWNER-only like Analytics): conversation list (sidebar on desktop, a select on phones), example questions, Enter-to-send composer, a "Checking your records…" status while waiting, the answer with which records were checked, a "cut short" note on `max_tokens`, safe error alerts with Retry (except on quota), and the remaining daily/monthly questions. Nothing is rendered that did not come from the backend.
 
-## 7. External integrations (future: M-Pesa)
+## 7. External integrations (M-Pesa)
 
-Designed now, built later:
+### 7.1 SMS matching (as built, 2026-09-18)
+Every M-Pesa payment a shop receives arrives as a confirmation SMS on the shop's phone (Pochi la Biashara, Buy Goods/Till, Paybill, or a plain "send money"). The owner or attendant pastes that SMS, or shares it from the Messages app, and SokoWise links it to the record of the money.
+
+- **Parser** `app/mpesa/parser.py`: a pure function that needs a 10-character transaction code, an amount and a date; direction (received vs sent), product kind, sender name, the masked sender phone and a Paybill account are best effort. Times are parsed as Africa/Nairobi and stored in UTC. Customer-side messages ("sent to", "paid to") are refused as `NOT_MONEY_RECEIVED` and never stored; unreadable text is kept as `UNPARSED` so unknown Safaricom templates surface during the pilot.
+- **Table** `mpesa_messages` (DATA_MAPPING §3.19): a side table. A message never creates a sale, payment or ledger entry by itself; it is *linked* to the `payments` row (an M-Pesa tender of a COMPLETED sale) or the `credit_transactions` REPAYMENT that carries the same code. Unique `(business_id, code)`, so a second paste replays the first (200, `created=false`; a concurrent race is settled by the index and answered as a replay).
+- **Rules** (`services/mpesa.py`, all scoped by the caller's business): (a) code equals an existing unlinked M-Pesa tender → MATCHED; (b) code equals an M-Pesa repayment reference → MATCHED; (c) otherwise UNMATCHED with *suggestions* only: tenders of the same amount within ±120 minutes that carry no known code, and active customers whose phone ends with the sender's visible digits. Suggestions are never applied automatically.
+- **Reverse hook**: when a sale or a repayment is later recorded with an M-Pesa reference, `services.sales` / `services.credit` call `link_reference_in_transaction`, which updates at most one UNMATCHED message inside the same transaction. Voiding a sale returns its message to UNMATCHED. This is why the sell screen opened from a message needs no message id: it prefills the tender and code, and the hook links.
+- **Transitions**: UNMATCHED → MATCHED (paste rule, manual match, repayment-from-message, reverse hook; OWNER and STAFF); UNMATCHED/UNPARSED → IGNORED (OWNER only); MATCHED → UNMATCHED (void). Everything else is 409 `MPESA_INVALID_TRANSITION`. Audit actions `mpesa.paste`, `mpesa.match` (with `via`), `mpesa.ignore`, `mpesa.unlink` carry ids, codes, amounts and statuses, never text, names or phones.
+- **Reconciliation** `GET /mpesa/reconciliation?date=`: for one local day, messages received (count, sum), matched, unmatched, ignored and unparsed, next to the M-Pesa money the app recorded (tenders + repayments from `analytics.cash_collected`). The dashboard card and the M-Pesa page show it.
+- **Privacy**: raw SMS text, sender name and phone stay in the tenant table; they are not logged, not exported, and no AI tool reads the table.
+- **Share target**: `frontend/public/manifest.webmanifest` declares `share_target` → `/mpesa?text=…`; the page prefills the paste box. Installing the app from Chrome ("Add to Home screen") is what makes SokoWise appear in Android's share sheet. No service worker.
+
+### 7.2 Daraja (designed now, built later)
 
 - `integrations/mpesa/` will contain a Daraja client (OAuth token, STK push, C2B register/confirm) and a webhook router.
 - `payments.provider = 'MPESA_DARAJA'`, `payments.status` transitions `PENDING → CONFIRMED | FAILED`, `sales.status` gains `PENDING`.

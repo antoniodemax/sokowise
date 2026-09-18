@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "ai_messages",
     "receipts",
     "receipt_lines",
+    "mpesa_messages",
     "audit_logs",
 }
 
@@ -49,7 +50,7 @@ async def test_all_sixteen_tables_exist_after_upgrade(engine: AsyncEngine) -> No
     async with engine.connect() as connection:
         tables = await connection.run_sync(_table_names)
     assert tables - {"alembic_version"} == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 18
+    assert len(EXPECTED_TABLES) == 19
 
 
 async def test_models_match_migrations_exactly(engine: AsyncEngine) -> None:

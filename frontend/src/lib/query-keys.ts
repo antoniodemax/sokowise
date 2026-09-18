@@ -28,6 +28,12 @@ export const queryKeys = {
     list: (params: Record<string, unknown>) => ['expenses', 'list', params] as const,
     categories: ['expenses', 'categories'] as const,
   },
+  mpesa: {
+    all: ['mpesa'] as const,
+    list: (params: Record<string, unknown>) => ['mpesa', 'list', params] as const,
+    detail: (id: string) => ['mpesa', 'detail', id] as const,
+    reconciliation: (date: string) => ['mpesa', 'reconciliation', date] as const,
+  },
   analytics: { all: ['analytics'] as const },
   business: { all: ['business'] as const },
   members: { all: ['members'] as const },

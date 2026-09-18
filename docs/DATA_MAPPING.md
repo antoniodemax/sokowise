@@ -374,6 +374,26 @@ Indexes `(business_id, created_at)`, `(business_id, status)`. Rows are kept afte
 
 Index `(receipt_id, position)`.
 
+### 3.19 mpesa_messages
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| business_id | UUID NOT NULL FK | |
+| created_by | UUID NOT NULL FK users | who pasted it |
+| status | VARCHAR(12) NOT NULL | CHECK in (`UNPARSED`, `UNMATCHED`, `MATCHED`, `IGNORED`) |
+| raw_text | TEXT NOT NULL | the SMS as pasted; never logged, exported or sent to AI |
+| code | VARCHAR(10) NULL | transaction code, upper-case; NULL only for UNPARSED (and ignored-unparsed) rows |
+| amount | NUMERIC(14,2) NULL | CHECK > 0 when present |
+| kind | VARCHAR(12) NULL | CHECK in (`POCHI`, `TILL`, `PAYBILL`, `SEND_MONEY`, `UNKNOWN`) |
+| sender_name, sender_phone_masked, sender_last3, account_reference | VARCHAR NULL | as printed on the SMS; last3 drives customer suggestions |
+| occurred_at | TIMESTAMPTZ NULL | the time on the SMS (Nairobi → UTC) |
+| payment_id | UUID NULL FK payments | the M-Pesa tender this message is the record of |
+| credit_transaction_id | UUID NULL FK credit_transactions | the REPAYMENT this message is the record of |
+| matched_at, matched_by, ignored_at, ignored_by, ignore_reason | | |
+| created_at, updated_at | | |
+
+CHECKs: `MATCHED` links exactly one of `payment_id` / `credit_transaction_id`, other statuses none. Unique partial index `(business_id, code) WHERE code IS NOT NULL`; indexes `(business_id, occurred_at)`, `(business_id, status)`, `payment_id`, `credit_transaction_id`. Plain FKs like `receipt_lines.movement_id`; the tenant check is in the service. The table is a side record of money that arrived: it never moves money (ARCHITECTURE §7.1).
+
 ### 3.16 audit_logs
 | Column | Type | Notes |
 |---|---|---|

@@ -11,6 +11,7 @@ from app.api.v1.customers import router as customers_router
 from app.api.v1.debtors import router as debtors_router
 from app.api.v1.expenses import router as expenses_router
 from app.api.v1.inventory import router as inventory_router
+from app.api.v1.mpesa import router as mpesa_router
 from app.api.v1.products import router as products_router
 from app.api.v1.receipts import router as receipts_router
 from app.api.v1.sales import router as sales_router
@@ -30,3 +31,4 @@ router.include_router(analytics_router)
 router.include_router(expenses_router)
 router.include_router(ai_router)
 router.include_router(receipts_router)
+router.include_router(mpesa_router)

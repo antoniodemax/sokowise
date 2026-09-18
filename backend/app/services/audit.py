@@ -56,6 +56,10 @@ class AuditAction(StrEnum):
     RECEIPT_EXTRACT = "receipt.extract"
     RECEIPT_CONFIRM = "receipt.confirm"
     RECEIPT_CANCEL = "receipt.cancel"
+    MPESA_PASTE = "mpesa.paste"
+    MPESA_MATCH = "mpesa.match"
+    MPESA_IGNORE = "mpesa.ignore"
+    MPESA_UNLINK = "mpesa.unlink"
 
 
 # Keys that must never appear in an audit payload, whatever a caller passes.

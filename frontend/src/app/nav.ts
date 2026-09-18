@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, LayoutDashboard, Package, Receipt, Settings, ShoppingCart, Sparkles, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, Boxes, LayoutDashboard, Package, Receipt, Settings, ShoppingCart, Smartphone, Sparkles, Users, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   to: string
@@ -11,6 +11,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/sales', label: 'Sales', icon: ShoppingCart },
+  { to: '/mpesa', label: 'M-Pesa', icon: Smartphone },
   { to: '/products', label: 'Products', icon: Package },
   { to: '/inventory', label: 'Inventory', icon: Boxes },
   { to: '/customers', label: 'Customers', icon: Users },

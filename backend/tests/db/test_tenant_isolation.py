@@ -24,6 +24,7 @@ PRODUCTS_URL = "/api/v1/products"
 CUSTOMERS_URL = "/api/v1/customers"
 SALES_URL = "/api/v1/sales"
 INVENTORY_URL = "/api/v1/inventory"
+MPESA_URL = "/api/v1/mpesa"
 EXPENSES_URL = "/api/v1/expenses"
 
 
@@ -81,6 +82,24 @@ async def _create_debtor(api: AsyncClient, session: AsyncSession, tenant: Tenant
     )
     assert response.status_code == HTTPStatus.CREATED, response.text
     return customer_id
+
+
+async def _create_mpesa_message(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
+    """A pasted, unmatched M-Pesa confirmation (synthetic code; unique per tenant)."""
+    code = "RK1ISO" + uuid.uuid4().hex[:4].upper()
+    response = await api.post(
+        MPESA_URL + "/messages",
+        headers=tenant.owner,
+        json={
+            "text": (
+                f"{code} Confirmed. You have received Ksh150.00 from ISO TESTER 0700***111 "
+                "on 18/9/26 at 1:00 PM. New business balance is Ksh1.00."
+            )
+        },
+    )
+    assert response.status_code == HTTPStatus.CREATED, response.text
+    message_id: str = response.json()["id"]
+    return message_id
 
 
 async def _create_sale(api: AsyncClient, session: AsyncSession, tenant: Tenant) -> str:
@@ -216,6 +235,25 @@ CASES: list[IsolationCase] = [
                 lambda product_id: f"{INVENTORY_URL}/adjust",
                 {"product_id": None, "quantity_delta": "-1", "reason": "hijack"},
             ),
+        ),
+    ),
+    IsolationCase(
+        name="mpesa_message",
+        create_in=_create_mpesa_message,
+        read_url=lambda message_id: f"{MPESA_URL}/messages/{message_id}",
+        list_url=f"{MPESA_URL}/messages",
+        mutations=(
+            (
+                "POST",
+                lambda message_id: f"{MPESA_URL}/messages/{message_id}/match",
+                {"payment_id": str(uuid.uuid4())},
+            ),
+            (
+                "POST",
+                lambda message_id: f"{MPESA_URL}/messages/{message_id}/repayment",
+                {"customer_id": str(uuid.uuid4())},
+            ),
+            ("POST", lambda message_id: f"{MPESA_URL}/messages/{message_id}/ignore", {}),
         ),
     ),
     IsolationCase(

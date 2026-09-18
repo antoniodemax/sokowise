@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Route } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import { customer, product, sale, UUID_RE } from '@/test/fixtures'
@@ -113,5 +114,28 @@ describe('SellPage', () => {
     expect(api.of('POST', '/api/v1/sales')[0].body).toMatchObject({
       payments: [{ method: 'MPESA', amount: '30', reference: 'QGH7X2' }, { method: 'CASH', amount: '25.00', reference: null }],
     })
+  })
+})
+
+describe('SellPage opened from an M-Pesa message', () => {
+  it('prefills one M-Pesa tender with the amount and code, and returns to /mpesa after the sale', async () => {
+    const api = mockApi({
+      'GET /api/v1/products': [bread],
+      'POST /api/v1/sales': () => json(sale({ total_amount: '110.00' }), 201),
+    })
+    renderWithProviders(<SellPage />, {
+      path: '/sales/new?mpesa=m1&amount=110.00&code=RK1TEST001',
+      pattern: '/sales/new',
+      extraRoutes: <Route path="/mpesa" element={<h1>M-Pesa page</h1>} />,
+    })
+    expect(await screen.findByRole('status')).toHaveTextContent('From an M-Pesa message: KSh 110 received, code RK1TEST001')
+    expect(screen.getByLabelText(/M-Pesa code/)).toHaveValue('RK1TEST001')
+    expect(screen.getByLabelText('Amount (KSh)')).toHaveValue('110.00')
+    await userEvent.click(await screen.findByRole('button', { name: /Bread/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'More Bread' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Record sale · KSh 110' }))
+    await waitFor(() => expect(api.of('POST', '/api/v1/sales')).toHaveLength(1))
+    expect((api.of('POST', '/api/v1/sales')[0].body as { payments: unknown[] }).payments).toEqual([{ method: 'MPESA', amount: '110.00', reference: 'RK1TEST001' }])
+    expect(await screen.findByRole('heading', { name: 'M-Pesa page' })).toBeInTheDocument()
   })
 })

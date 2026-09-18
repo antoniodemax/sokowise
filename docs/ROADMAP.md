@@ -374,3 +374,7 @@ Staging is real and validated end to end on the deployed domains: cross-site aut
 
 **Completion criteria**
 - Metrics report against PRD §18; each assumption marked validated / refuted / unclear with evidence; V2 scope proposal written.
+
+## Phase 17a — M-Pesa SMS matching ☑ (2026-09-18)
+
+Pilot shops receive every M-Pesa payment as an SMS. Paste or share it; the app parses it, links it by code to the sale tender or credit repayment (before or after the record exists), suggests candidates for the rest, and shows received vs recorded per day. Owner-only ignore; void unlinks. Android share target through the web manifest. See ARCHITECTURE §7.1, DATA_MAPPING §3.19, PRD FR-M. Daraja stays future work.

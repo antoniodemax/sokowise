@@ -51,7 +51,7 @@ from app.repositories import products as product_repo
 from app.repositories import sales as sales_repo
 from app.schemas.business import BusinessSettings
 from app.schemas.sales import SaleCreateRequest, SaleVoidRequest
-from app.services import audit, credit, inventory
+from app.services import audit, credit, inventory, mpesa
 from app.services.audit import AuditAction
 from app.services.credit import IdempotencyConflictError
 from app.services.money import allocate_discount, line_total, round_money
@@ -309,6 +309,17 @@ async def _create_sale(
     ]
     session.add_all(payments)
     await session.flush()
+    # An M-Pesa code typed here may already be a pasted message: link it (ARCHITECTURE §7).
+    for payment in payments:
+        if payment.method is PaymentMethod.MPESA and payment.reference:
+            await mpesa.link_reference_in_transaction(
+                session,
+                ctx,
+                reference=payment.reference,
+                payment_id=payment.id,
+                via="sale.create",
+                client=client,
+            )
 
     # Stock leaves through the ledger primitive (stock check, cache, movement row).
     for item in items:
@@ -475,6 +486,11 @@ async def void_sale(
                 reason=data.reason,
             )
 
+        for payment in sale.payments:
+            if payment.method is PaymentMethod.MPESA:
+                await mpesa.unlink_payment_in_transaction(
+                    session, ctx, payment_id=payment.id, client=client
+                )
         sale.status = SaleStatus.VOIDED
         sale.voided_at = datetime.now(UTC)
         sale.voided_by = ctx.user_id

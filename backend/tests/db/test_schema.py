@@ -26,6 +26,7 @@ TENANT_TABLES = {
     "ai_messages",
     "receipts",
     "receipt_lines",
+    "mpesa_messages",
     "audit_logs",
 }
 
@@ -214,6 +215,19 @@ def test_ai_message_role_check_excludes_system(schema: dict[str, Any]) -> None:
             False,
         ),
         ("refresh_tokens", "ix_refresh_tokens_family_id", ["family_id"], False),
+        (
+            "mpesa_messages",
+            "ix_mpesa_messages_business_id_occurred_at",
+            ["business_id", "occurred_at"],
+            False,
+        ),
+        (
+            "mpesa_messages",
+            "ix_mpesa_messages_business_id_status",
+            ["business_id", "status"],
+            False,
+        ),
+        ("mpesa_messages", "uq_mpesa_messages_business_id_code", ["business_id", "code"], True),
     ],
 )
 def test_documented_indexes_exist(
@@ -238,6 +252,11 @@ def test_partial_unique_indexes_have_their_predicates(schema: dict[str, Any]) ->
     )
     assert "phone IS NOT NULL" in str(
         _index(schema, "customers", "uq_customers_business_id_phone")["dialect_options"][
+            "postgresql_where"
+        ]
+    )
+    assert "code IS NOT NULL" in str(
+        _index(schema, "mpesa_messages", "uq_mpesa_messages_business_id_code")["dialect_options"][
             "postgresql_where"
         ]
     )

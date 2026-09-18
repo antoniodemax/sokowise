@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 
 import { Alert } from '@/components/ui/alert'
@@ -46,7 +46,11 @@ export default function SellPage() {
   const [lines, setLines] = useState<CartLine[]>([])
   const [discount, setDiscount] = useState('')
   const [customer, setCustomer] = useState<Customer | null>(null)
-  const [rawTenders, setTenders] = useState<Tender[]>([newTender('CASH')])
+  const [params] = useSearchParams()
+  // Opened from an M-Pesa message: the tender, amount and code come prefilled and the
+  // backend links the message to this sale by its code (ARCHITECTURE §7).
+  const fromMpesa = params.get('mpesa') && params.get('amount') && params.get('code') ? { id: params.get('mpesa')!, amount: params.get('amount')!, code: params.get('code')! } : null
+  const [rawTenders, setTenders] = useState<Tender[]>(() => (fromMpesa ? [{ ...newTender('MPESA', fromMpesa.amount), reference: fromMpesa.code }] : [newTender('CASH')]))
   const [note, setNote] = useState('')
   const [soldAt, setSoldAt] = useState('')
   const [serverError, setServerError] = useState<string | null>(null)
@@ -88,6 +92,7 @@ export default function SellPage() {
       for (const k of [queryKeys.sales.all, queryKeys.products.all, queryKeys.inventory.all, queryKeys.customers.all, queryKeys.analytics.all]) void queryClient.invalidateQueries({ queryKey: k })
       toast.success(`Sale recorded — ${formatKsh(sale.total_amount)}`, { action: { label: 'View', onClick: () => navigate(`/sales/${sale.id}`) } })
       setLines([]); setDiscount(''); setCustomer(null); setTenders([newTender('CASH')]); setNote(''); setSoldAt(''); setServerError(null); setSoldAtError(null)
+      if (fromMpesa) navigate('/mpesa')
     },
     onError: (error) => {
       if (error instanceof ApiError) {
@@ -123,6 +128,7 @@ export default function SellPage() {
     <>
       <BackLink to="/sales">Back to sales</BackLink>
       <PageHeader title="New sale" description="Add items, take payment, done." />
+      {fromMpesa && <Alert className="mb-4" role="status">From an M-Pesa message: {formatKsh(fromMpesa.amount)} received, code {fromMpesa.code}. Add the items that were sold.</Alert>}
       <form onSubmit={(e) => { e.preventDefault(); if (canSubmit && !mutation.isPending) submit() }} noValidate className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <div className="space-y-4">
           <Card>

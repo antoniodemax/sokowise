@@ -159,7 +159,7 @@ async def _tender_split(
     return split
 
 
-async def _cash_collected(
+async def cash_collected(
     session: AsyncSession, business_id: uuid.UUID, period: Period
 ) -> dict[str, Decimal]:
     """CONFIRMED CASH/MPESA tenders of period sales + REPAYMENTs occurred in the period."""
@@ -218,7 +218,7 @@ async def summary(session: AsyncSession, business_id: uuid.UUID, period: Period)
     sales_count, revenue, discounts = await _sales_totals(session, business_id, period)
     costs = await _cost_figures(session, business_id, period)
     tender_split = await _tender_split(session, business_id, period)
-    cash = await _cash_collected(session, business_id, period)
+    cash = await cash_collected(session, business_id, period)
     expenses = await _expenses(session, business_id, period)
     gross_profit = revenue - costs.cogs
     return Summary(

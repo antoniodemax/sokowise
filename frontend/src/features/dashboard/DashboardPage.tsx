@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Banknote, HandCoins, Package, Plus, Receipt, ShoppingCart, TrendingUp, UserRound, Wallet } from 'lucide-react'
+import { AlertTriangle, Banknote, HandCoins, Package, Plus, Receipt, ShoppingCart, Smartphone, TrendingUp, UserRound, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -13,7 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDebtors } from '@/features/customers/hooks'
 import { useLowStock } from '@/features/inventory/hooks'
-import { formatCalendarDate } from '@/lib/dates'
+import { useMpesaReconciliation } from '@/features/mpesa/hooks'
+import { formatCalendarDate, localDate } from '@/lib/dates'
 import { formatKsh, formatQuantity } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
@@ -142,6 +143,34 @@ function LowStockCard() {
   )
 }
 
+function MpesaCard({ timeZone }: { timeZone: string }) {
+  const today = localDate(new Date(), timeZone)
+  const summary = useMpesaReconciliation(today)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Smartphone className="size-4 text-primary" aria-hidden="true" /> M-Pesa today</CardTitle>
+        <CardDescription>Messages you added, and whether each is recorded.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {summary.isPending ? (
+          <div className="space-y-2" aria-busy="true"><Skeleton className="h-5" /><Skeleton className="h-5" /></div>
+        ) : summary.isError ? (
+          <ErrorState error={summary.error} title="Could not load M-Pesa" onRetry={() => summary.refetch()} />
+        ) : (
+          <dl className="grid grid-cols-3 gap-2 text-sm">
+            <div><dt className="text-muted-foreground">Received</dt><dd className="font-semibold">{formatKsh(summary.data.received_total)}</dd></div>
+            <div><dt className="text-muted-foreground">Recorded</dt><dd className="font-semibold">{formatKsh(summary.data.matched_total)}</dd></div>
+            <div><dt className="text-muted-foreground">Not recorded</dt><dd className={cn('font-semibold', summary.data.unmatched_count > 0 && 'text-warning')}>{summary.data.unmatched_count}</dd></div>
+          </dl>
+        )}
+        <Link to="/mpesa" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">Add or check messages</Link>
+      </CardContent>
+    </Card>
+  )
+}
+
+
 function DebtorsCard() {
   const debtors = useDebtors('balance')
   return (
@@ -177,6 +206,7 @@ export default function DashboardPage() {
   const { session } = useAuth()
   const [period, setPeriod] = useState<DashboardPeriod>('today')
   const isOwner = session?.role === 'OWNER'
+  const tz = session?.business.timezone ?? 'Africa/Nairobi'
   const query = useQuery({
     queryKey: ['analytics', 'summary', period],
     queryFn: ({ signal }) => dashboardApi.summary(period, signal),
@@ -204,6 +234,7 @@ export default function DashboardPage() {
             <CardContent><Link to="/sales/new" className={buttonVariants({ size: 'lg' })}><Plus aria-hidden="true" /> Record a sale</Link></CardContent>
           </Card>
           <LowStockCard />
+          <MpesaCard timeZone={tz} />
         </div>
       ) : query.isPending ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading figures">
@@ -216,7 +247,7 @@ export default function DashboardPage() {
       ) : summary.sales_count === 0 && summary.expenses === '0.00' && summary.receivables_outstanding === '0.00' ? (
         <div className="space-y-4">
           <EmptyState icon={ShoppingCart} title="Nothing recorded yet" description="Once you record sales and expenses, this dashboard shows your revenue, cash collected, profit and what customers owe." />
-          <div className="grid gap-4 md:grid-cols-2"><LowStockCard /><DebtorsCard /></div>
+          <div className="grid gap-4 md:grid-cols-2"><LowStockCard /><DebtorsCard /><div className="md:col-span-2"><MpesaCard timeZone={tz} /></div></div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -226,7 +257,7 @@ export default function DashboardPage() {
             </Alert>
           )}
           <Metrics summary={summary} />
-          <div className="grid gap-4 md:grid-cols-2"><LowStockCard /><DebtorsCard /></div>
+          <div className="grid gap-4 md:grid-cols-2"><LowStockCard /><DebtorsCard /><div className="md:col-span-2"><MpesaCard timeZone={tz} /></div></div>
         </div>
       )}
     </>

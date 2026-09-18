@@ -9,6 +9,7 @@ from app.models.catalog import Category, Product
 from app.models.customer import CreditTransaction, Customer
 from app.models.expense import Expense
 from app.models.inventory import InventoryMovement
+from app.models.mpesa import MpesaMessage
 from app.models.receipt import Receipt, ReceiptLine
 from app.models.sale import Payment, Sale, SaleItem
 from app.models.user import BusinessMembership, RefreshToken, User
@@ -25,6 +26,7 @@ __all__ = [
     "Customer",
     "Expense",
     "InventoryMovement",
+    "MpesaMessage",
     "Payment",
     "Product",
     "Receipt",

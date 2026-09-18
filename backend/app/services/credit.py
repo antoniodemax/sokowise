@@ -212,6 +212,18 @@ async def record_repayment(
                 idempotency_key=idempotency_key,
                 idempotency_hash=digest,
             )
+            if data.payment_method is MoneyReceivedMethod.MPESA and data.reference:
+                # A pasted M-Pesa message with this code gets linked (ARCHITECTURE §7).
+                from app.services import mpesa  # local: mpesa imports this module
+
+                await mpesa.link_reference_in_transaction(
+                    session,
+                    ctx,
+                    reference=data.reference,
+                    credit_transaction_id=entry.id,
+                    via="credit.repayment",
+                    client=client,
+                )
             await audit.record(
                 session,
                 ctx,

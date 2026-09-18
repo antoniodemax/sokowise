@@ -1,0 +1,19 @@
+{
+  "name": "SokoWise",
+  "short_name": "SokoWise",
+  "description": "Record sales, stock, credit and expenses for your shop.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b6e4f",
+  "icons": [
+    { "src": "/brand/sokowise-mark.png", "sizes": "176x176", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ],
+  "share_target": {
+    "action": "/mpesa",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
+}

@@ -239,6 +239,14 @@ Requirement IDs are stable; reference them from tests and commits.
 ### FR-K Audit
 - FR-K1. The following are audited with actor, timestamp, entity and before/after: sale void, stock adjustment, restock, credit adjustment, expense edit/delete, product price change, user role/deactivation, business settings change.
 
+### FR-M M-Pesa SMS matching (implemented 2026-09-18)
+- FR-M1. OWNER or STAFF can paste an M-Pesa confirmation SMS (or share it from the phone's Messages app into the installed web app). The app reads the transaction code, amount, sender, kind (Pochi, Till, Paybill, send money) and time. Messages about money sent or paid by the shop are refused; unreadable text is kept and flagged so the owner can check it.
+- FR-M2. A message is linked to the sale tender or credit repayment that carries the same code, whether the record existed before the paste or is created afterwards (the sell screen can be opened from the message with the tender, amount and code prefilled). Nothing is ever recorded automatically from a message: only a sale or a repayment moves money.
+- FR-M3. For a message with no record, the app *suggests* sales of the same amount around the same time and customers whose phone ends with the sender's visible digits. The user chooses; nothing is applied by itself.
+- FR-M4. OWNER can ignore a message that is not shop income. Voiding a sale returns its message to "not recorded".
+- FR-M5. For each day the app shows: M-Pesa received (from messages), recorded, not recorded, and the M-Pesa money recorded in SokoWise, so the owner can see at a glance what arrived without a record.
+- FR-M6. Daraja (automatic confirmation from Safaricom for Till/Paybill) remains future scope (§10); Pochi la Biashara has no API, so SMS matching is its end state.
+
 ## 12. Non-functional requirements
 
 | ID | Requirement |
@@ -457,6 +465,7 @@ This section is the honest map between this document and the code. "IMPLEMENTED"
 - AI copilot (FR-J1–J8, AI-1–AI-8 quotas, AI-10, AI-13, AI-14) — read-only tools, tenant scoped, whole-answer responses (no streaming, AI-9 open), no enforced global spend cap.
 - Supplier receipt intelligence (FR-L1–L7) — upload, validation, private storage, extraction pipeline, conservative matching, owner review and atomic confirmation into inventory.
 - Data exports (NFR-12): expenses, sales and customers CSV.
+- M-Pesa SMS matching (FR-M1–M5): paste or share a confirmation SMS, automatic linking by code in both directions, suggestions, owner ignore, daily received-vs-recorded summary, Android share target via the web manifest.
 - Public homepage at `/`; the app at `/dashboard`; mobile layouts checked at 390, 412, 820 and 1366 px.
 - Operational: structured JSON logs with request ids, error envelope with no internals, in-process rate limits on auth and AI endpoints, `/health/live` and `/health/ready` (database + migration head; receipt storage reported), Sentry initialisation when `SENTRY_DSN` is set, production start-up guards (secure cookies, no wildcard CORS, no placeholder JWT secret, absolute receipt storage path).
 
@@ -464,7 +473,7 @@ This section is the honest map between this document and the code. "IMPLEMENTED"
 - Password self-service reset (FR-B6) — needs an SMS/email provider.
 - Customer edit/archive and PII deletion on request (FR-G1 "CRUD", NFR-7).
 - Streaming copilot answers (AI-9) and the global AI spend cap with 80 % alert (AI-8, FR-J6 "global cost cap").
-- M-Pesa SMS → expense draft (US-18 second half); M-Pesa Daraja; WhatsApp; offline sync; PWA; Swahili UI; multi-branch; suppliers; eTIMS (§10).
+- M-Pesa SMS → expense draft (US-18 second half); M-Pesa Daraja (FR-M6); WhatsApp; offline sync; PWA service worker/offline (the manifest and share target exist); Swahili UI; multi-branch; suppliers; eTIMS (§10).
 - Audit-log UI (§9 row 12 "minimal UI") — the table is written; no endpoint or screen reads it yet.
 - Receipt image retention automation (docs/OPERATIONS.md defines the rule; no purge job exists) and an object-storage backend (the `BlobStorage` interface exists; only local-file storage is implemented).
 - Postgres row-level security as a second isolation layer (ROADMAP Phase 11).

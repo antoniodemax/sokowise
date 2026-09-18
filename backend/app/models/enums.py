@@ -107,6 +107,25 @@ class ReceiptLineReview(StrEnum):
     SKIPPED = "SKIPPED"
 
 
+class MpesaMessageStatus(StrEnum):
+    """A pasted M-Pesa confirmation SMS (docs/DATA_MAPPING.md §3.19)."""
+
+    UNPARSED = "UNPARSED"  # kept as raw text so unknown formats are collected during the pilot
+    UNMATCHED = "UNMATCHED"  # money received, no sale or repayment carries this code yet
+    MATCHED = "MATCHED"  # linked to exactly one payment or one credit repayment
+    IGNORED = "IGNORED"  # owner decided it is not shop income (owner-only transition)
+
+
+class SmsKind(StrEnum):
+    """Which M-Pesa product the message came from, inferred from its wording."""
+
+    POCHI = "POCHI"
+    TILL = "TILL"
+    PAYBILL = "PAYBILL"
+    SEND_MONEY = "SEND_MONEY"
+    UNKNOWN = "UNKNOWN"
+
+
 class AIMessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
