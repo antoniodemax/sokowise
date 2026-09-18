@@ -126,6 +126,15 @@ class SmsKind(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class ProposalStatus(StrEnum):
+    """An action the copilot proposed; only the owner's confirm applies it (PRD FR-J7)."""
+
+    PENDING = "PENDING"
+    APPLIED = "APPLIED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+
+
 class AIMessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"

@@ -19,12 +19,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.periods import AIPeriod, PeriodError, local_today, resolve_ai_period
+from app.ai.proposals import PROPOSAL_DESCRIPTIONS, PROPOSAL_MODELS, PROPOSAL_TOOLS
 from app.analytics import queries
 from app.analytics.periods import Period
 from app.core.context import BusinessContext
 from app.repositories.credit import list_debtors as repo_list_debtors
 from app.repositories.customers import list_customers as repo_list_customers
 from app.repositories.inventory import list_low_stock as repo_list_low_stock
+from app.repositories.products import list_products as repo_list_products
 from app.schemas.business import BusinessSettings
 
 MAX_ROWS = 50
@@ -342,6 +344,41 @@ async def search_customers(
     }
 
 
+class SearchProductsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    query: str = Field(
+        min_length=1, max_length=120, description="Start of a product's name, SKU or barcode"
+    )
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+async def search_products(
+    session: AsyncSession, ctx: BusinessContext, args: SearchProductsInput, now: datetime | None
+) -> dict[str, Any]:
+    """Find products by name prefix; the ids are what propose_sale / propose_restock need."""
+    rows = await repo_list_products(
+        session, ctx.business_id, query=args.query.strip(), include_archived=False, limit=args.limit
+    )
+    return {
+        "currency": CURRENCY,
+        "products": [
+            {
+                "product_id": str(p.id),
+                "name": p.name,
+                "unit": p.unit,
+                "selling_price": _money(p.selling_price),
+                "cost_price": _money(p.cost_price) if p.cost_price is not None else None,
+                "track_inventory": p.track_inventory,
+                "stock_quantity": _qty(p.stock_quantity) if p.track_inventory else None,
+            }
+            for p in rows
+        ],
+        "notes": [
+            "matches the start of the name, SKU or barcode; archived products are not listed"
+        ],
+    }
+
+
 # --- registry ------------------------------------------------------------------------------
 
 ToolFn = Callable[[AsyncSession, BusinessContext, Any, datetime | None], Awaitable[dict[str, Any]]]
@@ -428,6 +465,12 @@ TOOLS: dict[str, Tool] = {
             get_expense_summary,
         ),
         Tool(
+            "search_products",
+            "Find a product by the start of its name, SKU or barcode and get its product_id, price and stock. Use before proposing a sale or restock, and to check whether a product already exists before proposing a new one.",
+            SearchProductsInput,
+            search_products,
+        ),
+        Tool(
             "search_customers",
             "Find customers by part of their name or by phone number; returns each one's balance owed. Use when the user names a customer.",
             SearchCustomersInput,
@@ -437,8 +480,24 @@ TOOLS: dict[str, Tool] = {
 }
 
 
+def _proposal_definition(name: str) -> dict[str, Any]:
+    """A propose_* tool: same strict schema shape, but never executed (ARCHITECTURE §6.4)."""
+    kind = PROPOSAL_TOOLS[name]
+    stub = Tool(name, PROPOSAL_DESCRIPTIONS[name], PROPOSAL_MODELS[kind], _never_runs)
+    return stub.definition()
+
+
+async def _never_runs(
+    session: AsyncSession, ctx: BusinessContext, args: Any, now: datetime | None
+) -> dict[str, Any]:  # pragma: no cover — proposals are intercepted before any tool runs
+    msg = "proposal tools are not executed"
+    raise RuntimeError(msg)
+
+
 def tool_definitions() -> list[dict[str, Any]]:
-    return [tool.definition() for tool in TOOLS.values()]
+    return [tool.definition() for tool in TOOLS.values()] + [
+        _proposal_definition(name) for name in PROPOSAL_TOOLS
+    ]
 
 
 def serialise_result(result: dict[str, Any]) -> str:

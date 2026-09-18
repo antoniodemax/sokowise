@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.errors import AIQuotaExceededError, AIUnavailableError
 from app.ai.prompts import SYSTEM_PROMPT, volatile_context
+from app.ai.proposals import PROPOSAL_TOOLS, ProposalKind, StoredProposal, validate_proposal
 from app.ai.provider import AIProvider, ProviderResponse, ToolCall, Usage
 from app.ai.tools import TOOLS, ToolInputError, serialise_result, tool_definitions
 from app.core.config import Settings
@@ -30,12 +31,21 @@ from app.core.context import BusinessContext
 from app.core.errors import NotFoundError
 from app.db.session import transaction
 from app.models import AIConversation, AIMessage
-from app.models.enums import AIMessageRole
+from app.models.enums import AIMessageRole, ProposalStatus
 from app.repositories import ai as ai_repo
 from app.repositories import businesses as business_repo
 from app.repositories import users as user_repo
 
 logger = logging.getLogger(__name__)
+
+# Shown when the model proposed an action without any text of its own.
+_PROPOSAL_FALLBACK_TEXT: dict[ProposalKind | None, str] = {
+    ProposalKind.PRODUCT: "I prepared a new product. Check it and tap Confirm to add it.",
+    ProposalKind.SALE: "I prepared this sale. Check it and tap Confirm to record it.",
+    ProposalKind.REPAYMENT: "I prepared this deni payment. Check it and tap Confirm to record it.",
+    ProposalKind.RESTOCK: "I prepared this restock. Check it and tap Confirm to add the stock.",
+    None: "",
+}
 
 OUTPUT_SUMMARY_CHARS = 500
 
@@ -236,6 +246,7 @@ class AIService:
         tool_records: list[dict[str, Any]] = []
         response: ProviderResponse | None = None
         model_used = self._settings.ai_model
+        proposal: StoredProposal | None = None
 
         for round_index in range(self._settings.ai_max_tool_rounds + 1):
             response = await self._provider.complete(
@@ -271,6 +282,12 @@ class AIService:
                 )
             if response.stop_reason != "tool_use" or not response.tool_calls:
                 break
+            proposal_call = next((c for c in response.tool_calls if c.name in PROPOSAL_TOOLS), None)
+            if proposal_call is not None:
+                # A proposal ends the turn: it is stored for the owner to confirm, never run.
+                # The model's own text is the answer shown next to it.
+                proposal = self._capture_proposal(proposal_call, tool_records)
+                break
             if round_index == self._settings.ai_max_tool_rounds:
                 logger.warning(
                     "ai tool round limit reached", extra={"conversation_id": str(conversation.id)}
@@ -293,7 +310,7 @@ class AIService:
                 "The assistant declined to answer that. Please rephrase your question.",
                 code="AI_REFUSED",
             )
-        if not response.text:
+        if not response.text and proposal is None:
             raise AIUnavailableError(
                 "The assistant gave an empty answer. Please try again.", code="AI_INVALID_RESPONSE"
             )
@@ -302,8 +319,10 @@ class AIService:
             business_id=ctx.business_id,
             conversation_id=conversation.id,
             role=AIMessageRole.ASSISTANT,
-            content=response.text,
+            content=response.text or _PROPOSAL_FALLBACK_TEXT[proposal.kind if proposal else None],
             tool_calls=tool_records or None,
+            proposal=proposal.model_dump(mode="json") if proposal else None,
+            proposal_status=ProposalStatus.PENDING if proposal else None,
             model=model_used[:60],
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
@@ -335,6 +354,22 @@ class AIService:
         if messages and messages[0]["role"] != "user":
             messages.pop(0)
         return messages
+
+    def _capture_proposal(
+        self, call: ToolCall, records: list[dict[str, Any]]
+    ) -> StoredProposal | None:
+        """Validate a propose_* call's arguments; an invalid one is dropped, not executed."""
+        kind = PROPOSAL_TOOLS[call.name]
+        try:
+            parsed = validate_proposal(kind, call.input)
+        except ValidationError as exc:
+            logger.warning(
+                "ai proposal rejected", extra={"tool": call.name, "errors": len(exc.errors())}
+            )
+            records.append({"name": call.name, "input": call.input, "ok": False, "duration_ms": 0})
+            return None
+        records.append({"name": call.name, "input": call.input, "ok": True, "duration_ms": 0})
+        return StoredProposal(kind=kind, payload=parsed.model_dump(mode="json"))
 
     async def _run_tool(
         self,

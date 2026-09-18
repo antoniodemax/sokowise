@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.errors import AINotConfiguredError
 from app.ai.provider import AIProvider
 from app.ai.service import AIService, Quota
-from app.api.deps import enforce_rate_limit, get_settings_dep, require_owner
+from app.api.deps import enforce_rate_limit, get_client_info, get_settings_dep, require_owner
 from app.core.config import Settings
-from app.core.context import BusinessContext
+from app.core.context import BusinessContext, ClientInfo
 from app.db.session import get_session
 from app.models import AIConversation, AIMessage
 from app.repositories.ai import MAX_CONVERSATIONS
@@ -22,14 +22,19 @@ from app.schemas.ai import (
     ConversationOut,
     MessageCreateRequest,
     MessageOut,
+    ProposalConfirmRequest,
+    ProposalOut,
+    ProposalResultOut,
     QuotaOut,
     ToolCallOut,
 )
+from app.services import ai_actions
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 OwnerCtx = Annotated[BusinessContext, Depends(require_owner)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+ClientDep = Annotated[ClientInfo, Depends(get_client_info)]
 
 
 def get_ai_provider(request: Request) -> AIProvider:
@@ -77,6 +82,17 @@ def message_out(message: AIMessage) -> MessageOut:
         tool_calls=[_tool_call_out(call) for call in (message.tool_calls or [])] or None,
         stop_reason=message.stop_reason,
         created_at=message.created_at,
+        proposal=(
+            ProposalOut(
+                kind=str(message.proposal.get("kind")),
+                payload=dict(message.proposal.get("payload") or {}),  # type: ignore[call-overload]
+                status=message.proposal_status.value if message.proposal_status else "PENDING",
+                entity_id=message.proposal_entity_id,
+                applied_at=message.proposal_applied_at,
+            )
+            if message.proposal
+            else None
+        ),
     )
 
 
@@ -145,3 +161,40 @@ async def send_message(
         assistant_message=message_out(result.assistant_message),
         quota=quota_out(result.quota),
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/confirm",
+    response_model=ProposalResultOut,
+)
+async def confirm_proposal(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    body: ProposalConfirmRequest,
+    ctx: OwnerCtx,
+    session: SessionDep,
+    client: ClientDep,
+) -> ProposalResultOut:
+    """Apply a proposed action with the owner's confirmed details (PRD FR-J7)."""
+    applied = await ai_actions.confirm(
+        session, ctx, conversation_id, message_id, body.payload, client
+    )
+    return ProposalResultOut(
+        message=message_out(applied.message), kind=applied.kind.value, entity_id=applied.entity_id
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/reject",
+    response_model=ProposalResultOut,
+)
+async def reject_proposal(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    ctx: OwnerCtx,
+    session: SessionDep,
+    client: ClientDep,
+) -> ProposalResultOut:
+    message = await ai_actions.reject(session, ctx, conversation_id, message_id, client)
+    kind = str((message.proposal or {}).get("kind", ""))
+    return ProposalResultOut(message=message_out(message), kind=kind, entity_id=None)

@@ -16,8 +16,9 @@ import { formatDateTime } from '@/lib/dates'
 import { describeError } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 
-import { assistantApi, MAX_QUESTION_CHARS, type AskResponse, type AssistantMessage, type ConversationDetail } from './api'
+import { assistantApi, MAX_QUESTION_CHARS, type AskResponse, type AssistantMessage, type ConversationDetail, type ProposalResult } from './api'
 import { EXAMPLE_QUESTIONS } from './examples'
+import { ProposalCard } from './ProposalCard'
 import { assistantKeys, useConversation, useConversations, useQuota } from './hooks'
 
 const TOOL_LABELS: Record<string, string> = {
@@ -29,6 +30,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_debtors: 'customer debts',
   get_expense_summary: 'expenses',
   search_customers: 'customer search',
+  search_products: 'product search',
 }
 
 /** AI errors carry a safe, specific message from the backend; other errors use the usual copy. */
@@ -36,9 +38,9 @@ function describeAskError(error: unknown): string {
   return error instanceof ApiError && error.code.startsWith('AI_') ? error.message : describeError(error)
 }
 
-function MessageBubble({ message, timezone }: { message: AssistantMessage; timezone: string }) {
+function MessageBubble({ message, timezone, conversationId, onProposal }: { message: AssistantMessage; timezone: string; conversationId: string | null; onProposal: (result: ProposalResult) => void }) {
   const mine = message.role === 'user'
-  const checked = [...new Set((message.tool_calls ?? []).filter((c) => c.ok).map((c) => TOOL_LABELS[c.name] ?? c.name))]
+  const checked = [...new Set((message.tool_calls ?? []).filter((c) => c.ok && !c.name.startsWith('propose_')).map((c) => TOOL_LABELS[c.name] ?? c.name))]
   return (
     <li className={cn('flex gap-3', mine && 'justify-end')}>
       {!mine && (
@@ -51,6 +53,7 @@ function MessageBubble({ message, timezone }: { message: AssistantMessage; timez
         <p className="whitespace-pre-wrap">{message.content}</p>
         {!mine && message.stop_reason === 'max_tokens' && <p className="mt-2 text-xs text-warning">This answer was cut short. Ask a narrower question for the rest.</p>}
         {!mine && checked.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Checked: {checked.join(', ')} · figures come from your records</p>}
+        {!mine && message.proposal && conversationId && <ProposalCard conversationId={conversationId} messageId={message.id} proposal={message.proposal} onResult={onProposal} />}
         <p className="mt-1 text-[11px] opacity-70">{formatDateTime(message.created_at, timezone)}</p>
       </div>
     </li>
@@ -61,6 +64,12 @@ export default function AssistantPage() {
   const { session } = useAuth()
   const tz = session?.business.timezone ?? 'Africa/Nairobi'
   const queryClient = useQueryClient()
+  const applyProposalResult = (result: ProposalResult) => {
+    if (!conversationId) return
+    queryClient.setQueryData<ConversationDetail>(assistantKeys.conversation(conversationId), (current) =>
+      current ? { ...current, messages: current.messages.map((m) => (m.id === result.message.id ? result.message : m)) } : current,
+    )
+  }
   const [params, setParams] = useSearchParams()
   const conversationId = params.get('c')
   const conversations = useConversations()
@@ -188,7 +197,7 @@ export default function AssistantPage() {
               </div>
             ) : (
               <ul className="space-y-4" aria-live="polite">
-                {messages.map((m) => <MessageBubble key={m.id} message={m} timezone={tz} />)}
+                {messages.map((m) => <MessageBubble key={m.id} message={m} timezone={tz} conversationId={conversationId} onProposal={applyProposalResult} />)}
                 {pending && (
                   <>
                     <li className="flex justify-end"><div className="max-w-[85%] rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground opacity-80"><p className="sr-only">You:</p><p className="whitespace-pre-wrap">{pending}</p></div></li>
@@ -216,7 +225,7 @@ export default function AssistantPage() {
               <Button type="submit" size="icon" aria-label="Send" disabled={!canSend} loading={ask.isPending}><SendHorizontal aria-hidden="true" /></Button>
             </form>
             <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
-              {quota.isError ? describeAskError(quota.error) : quotaLine ?? 'Loading your question allowance…'} · The copilot reads your records; it cannot change them.
+              {quota.isError ? describeAskError(quota.error) : quotaLine ?? 'Loading your question allowance…'} · The copilot reads your records. It can suggest adding a product or a sale, but nothing is recorded until you tap Confirm.
             </p>
           </div>
         </section>

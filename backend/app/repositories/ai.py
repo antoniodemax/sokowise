@@ -78,3 +78,22 @@ async def count_user_messages_since(
         AIMessage.created_at >= since,
     )
     return int(await session.scalar(stmt) or 0)
+
+
+async def get_message(
+    session: AsyncSession,
+    *,
+    business_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    for_update: bool = False,
+) -> AIMessage | None:
+    stmt = select(AIMessage).where(
+        AIMessage.business_id == business_id,
+        AIMessage.conversation_id == conversation_id,
+        AIMessage.id == message_id,
+    )
+    if for_update:
+        stmt = stmt.with_for_update()
+    message: AIMessage | None = await session.scalar(stmt)
+    return message

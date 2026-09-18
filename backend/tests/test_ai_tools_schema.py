@@ -14,14 +14,19 @@ EXPECTED = {
     "get_inventory_status",
     "get_debtors",
     "get_expense_summary",
+    "search_products",
     "search_customers",
 }
+# Declared to the model but never executed: the orchestrator turns them into proposals.
+PROPOSALS = {"propose_product", "propose_sale", "propose_repayment", "propose_restock"}
 
 
 def test_only_the_allowlisted_read_only_tools_exist() -> None:
     assert set(TOOLS) == EXPECTED
     forbidden = {"execute_sql", "query_database", "search_database", "run_report", "run_sql"}
     assert not forbidden & set(TOOLS)
+    assert {d["name"] for d in tool_definitions()} == EXPECTED | PROPOSALS
+    assert not PROPOSALS & set(TOOLS)  # no executable registration for a proposal
 
 
 def test_no_tool_accepts_a_business_id_or_free_form_filters() -> None:
@@ -83,7 +88,9 @@ def test_system_prompt_states_the_accounting_rules_and_has_no_secrets(monkeypatc
         "repayments are not revenue",
         "net profit",
         "understated",
-        "read-only",
+        "never change records yourself",
+        "tap confirm",
+        "never say it is done",
         "ksh",
     ):
         assert phrase in text, phrase

@@ -60,6 +60,8 @@ class AuditAction(StrEnum):
     MPESA_MATCH = "mpesa.match"
     MPESA_IGNORE = "mpesa.ignore"
     MPESA_UNLINK = "mpesa.unlink"
+    AI_PROPOSAL_APPLY = "ai.proposal_apply"
+    AI_PROPOSAL_REJECT = "ai.proposal_reject"
 
 
 # Keys that must never appear in an audit payload, whatever a caller passes.

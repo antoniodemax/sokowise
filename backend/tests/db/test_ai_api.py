@@ -218,7 +218,13 @@ async def test_ask_runs_the_tool_against_real_data_and_persists_both_messages(
         "get_inventory_status",
         "get_debtors",
         "get_expense_summary",
+        "search_products",
         "search_customers",
+        # Proposals: offered to the model, never executed (PRD FR-J7).
+        "propose_product",
+        "propose_sale",
+        "propose_repayment",
+        "propose_restock",
     }
 
     stored = await _messages(db_session, conversation_id)

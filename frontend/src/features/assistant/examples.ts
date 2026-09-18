@@ -6,4 +6,6 @@ export const EXAMPLE_QUESTIONS = [
   'What did I sell most this week?',
   'How much did I spend this month?',
   'Which products are not selling?',
+  'Add a product: Sukari 1kg at 160',
+  'Record a sale: 2 bread, cash',
 ] as const

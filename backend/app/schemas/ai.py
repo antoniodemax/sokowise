@@ -27,6 +27,16 @@ class ToolCallOut(BaseModel):
     duration_ms: int
 
 
+class ProposalOut(BaseModel):
+    """An action the copilot proposed; applied only through the confirm endpoint."""
+
+    kind: str
+    payload: dict[str, object]
+    status: str
+    entity_id: uuid.UUID | None
+    applied_at: datetime | None
+
+
 class MessageOut(BaseModel):
     id: uuid.UUID
     role: str
@@ -34,6 +44,21 @@ class MessageOut(BaseModel):
     tool_calls: list[ToolCallOut] | None
     stop_reason: str | None
     created_at: datetime
+    proposal: ProposalOut | None = None
+
+
+class ProposalConfirmRequest(BaseModel):
+    """The payload the owner confirms, in the proposal kind's own schema (may be edited)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, object]
+
+
+class ProposalResultOut(BaseModel):
+    message: MessageOut
+    kind: str
+    entity_id: uuid.UUID | None
 
 
 class ConversationDetailOut(ConversationOut):

@@ -5,8 +5,11 @@ request and never stored, so `role` is only `user` or `assistant`.
 """
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -20,7 +23,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, CreatedAtMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import AIMessageRole, enum_check, enum_column
+from app.models.enums import AIMessageRole, ProposalStatus, enum_check, enum_column
 
 
 class AIConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -48,6 +51,10 @@ class AIMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             ["ai_conversations.id", "ai_conversations.business_id"],
         ),
         enum_check("role", AIMessageRole, "role"),
+        enum_check("proposal_status", ProposalStatus, "proposal_status"),
+        CheckConstraint(
+            "(proposal IS NULL) = (proposal_status IS NULL)", name="proposal_has_status"
+        ),
         # Quotas count role = 'user' rows per business.
         Index(None, "business_id", "role", "created_at"),
         Index(None, "conversation_id", "created_at"),
@@ -67,3 +74,10 @@ class AIMessage(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     cache_read_tokens: Mapped[int | None] = mapped_column(Integer)
     stop_reason: Mapped[str | None] = mapped_column(String(30))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
+    # A proposed action (PRD FR-J7): {kind, payload}. Data the model returned, never
+    # executed by itself; `services.ai_actions.confirm` applies the owner's confirmed payload.
+    # none_as_null: a message without a proposal stores SQL NULL, not the JSON literal null.
+    proposal: Mapped[dict[str, object] | None] = mapped_column(JSONB(none_as_null=True))
+    proposal_status: Mapped[ProposalStatus | None] = mapped_column(enum_column(ProposalStatus, 10))
+    proposal_entity_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True))
+    proposal_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
