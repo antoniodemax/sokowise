@@ -9,11 +9,12 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
+# The project itself is NOT installed into the venv: uv caches a built copy of the package
+# by name and version, so a deploy that changes only app/*.py could keep serving the
+# previous code from site-packages. The runtime imports the fresh /app/app via PYTHONPATH.
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
 
 FROM python:3.12-slim-bookworm AS runtime
 WORKDIR /app
@@ -28,7 +29,7 @@ COPY --chown=app:app scripts/start.sh /app/scripts/start.sh
 # Default receipt blob root for single-host/compose use. Production must point
 # RECEIPT_STORAGE_DIR at a mounted volume (docs/OPERATIONS.md); the container disk is ephemeral.
 RUN mkdir -p /app/var/receipts && chown -R app:app /app/var
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 API_HOST=0.0.0.0 API_PORT=8000
+ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH=/app PYTHONUNBUFFERED=1 API_HOST=0.0.0.0 API_PORT=8000
 # Behind a platform proxy (Railway) set FORWARDED_ALLOW_IPS="*" in the service environment so
 # uvicorn takes the client address from X-Forwarded-For; the per-IP rate limits and audit
 # `ip` column depend on it. Left unset here because compose publishes the port directly.
