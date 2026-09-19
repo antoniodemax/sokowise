@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 from app.models.enums import SmsKind
-from app.mpesa.parser import ParsedSms, SmsDirection, parse_mpesa_sms
+from app.mpesa.parser import ParsedSms, SmsDirection, parse_mpesa_sms, redact_balance
 
 SEND_MONEY = (
     "RK1TEST001 Confirmed.You have received Ksh1,000.00 from JANE TESTER 0712***456 "
@@ -163,3 +163,39 @@ def test_unparseable_returns_none(text: str) -> None:
 
 def test_parser_is_pure() -> None:
     assert parse_mpesa_sms(POCHI) == parse_mpesa_sms(POCHI)
+
+
+def test_redact_balance_drops_only_the_shops_balance() -> None:
+    cases = {
+        SEND_MONEY: (
+            "RK1TEST001 Confirmed.You have received Ksh1,000.00 from JANE TESTER 0712***456 "
+            "on 18/9/26 at 2:15 PM Separate business and personal funds through Pochi la "
+            "Biashara on *334#."
+        ),
+        POCHI: (
+            "RK1TEST002 Confirmed. You have received Ksh500.00 from JOHN TESTER 0722***789 on "
+            "18/9/26 at 3:02 PM."
+        ),
+        TILL: (
+            "RK1TEST003 Confirmed. Ksh1,200.00 paid by JOHN TESTER 0722***789 on 18/9/26 at "
+            "3:10 PM."
+        ),
+        PAYBILL: (
+            "RK1TEST004 Confirmed. Ksh2,000.00 received from JOHN TESTER 0722***789 for account "
+            "SHOP12 on 18/9/26 at 4:00 PM."
+        ),
+        "no balance sentence here": "no balance sentence here",
+    }
+    for text, expected in cases.items():
+        redacted = redact_balance(text)
+        assert redacted == expected
+        # Everything the matcher needs survives redaction.
+        before, after = parse_mpesa_sms(text), parse_mpesa_sms(redacted)
+        if before is not None:
+            assert after is not None
+            assert (after.code, after.amount, after.sender_name, after.occurred_at) == (
+                before.code,
+                before.amount,
+                before.sender_name,
+                before.occurred_at,
+            )

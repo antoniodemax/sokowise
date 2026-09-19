@@ -386,7 +386,7 @@ Index `(receipt_id, position)`.
 | business_id | UUID NOT NULL FK | |
 | created_by | UUID NOT NULL FK users | who pasted it |
 | status | VARCHAR(12) NOT NULL | CHECK in (`UNPARSED`, `UNMATCHED`, `MATCHED`, `IGNORED`) |
-| raw_text | TEXT NOT NULL | the SMS as pasted; never logged, exported or sent to AI |
+| raw_text | TEXT NOT NULL | the SMS as pasted, minus the "New … balance is Ksh…" sentence (`parser.redact_balance`): the shop's balance is never stored. Never logged, exported or sent to AI |
 | code | VARCHAR(10) NULL | transaction code, upper-case; NULL only for UNPARSED (and ignored-unparsed) rows |
 | amount | NUMERIC(14,2) NULL | CHECK > 0 when present |
 | kind | VARCHAR(12) NULL | CHECK in (`POCHI`, `TILL`, `PAYBILL`, `SEND_MONEY`, `UNKNOWN`) |

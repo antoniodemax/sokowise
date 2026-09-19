@@ -35,7 +35,7 @@ from app.core.errors import AppError, ConflictError, NotFoundError, PermissionDe
 from app.db.session import transaction
 from app.models import Customer, MpesaMessage, Payment, Sale
 from app.models.enums import MembershipRole, MoneyReceivedMethod, MpesaMessageStatus
-from app.mpesa.parser import SmsDirection, parse_mpesa_sms
+from app.mpesa.parser import SmsDirection, parse_mpesa_sms, redact_balance
 from app.repositories import mpesa as mpesa_repo
 from app.schemas.credit import RepaymentRequest
 from app.schemas.mpesa import MpesaIgnoreRequest, MpesaMatchRequest, MpesaRepaymentRequest
@@ -111,7 +111,7 @@ async def paste(
                     business_id=ctx.business_id,
                     created_by=ctx.user_id,
                     status=MpesaMessageStatus.UNPARSED,
-                    raw_text=text,
+                    raw_text=redact_balance(text),
                 ),
             )
             await _audit(session, ctx, AuditAction.MPESA_PASTE, message, client)
@@ -130,7 +130,7 @@ async def paste(
                     business_id=ctx.business_id,
                     created_by=ctx.user_id,
                     status=MpesaMessageStatus.UNMATCHED,
-                    raw_text=text,
+                    raw_text=redact_balance(text),
                     code=parsed.code,
                     amount=parsed.amount,
                     kind=parsed.kind,

@@ -64,6 +64,18 @@ _WHEN = re.compile(
     r"\bon\s+(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)\b", re.IGNORECASE
 )
 _TRAILING_PUNCT = ".,;:"
+# The shop's own balance is private and not needed for matching: it is dropped before the
+# message is stored. Matches "New M-PESA balance is Ksh…", "New business balance…",
+# "New Till balance…", "New Utility balance…" up to the end of that sentence.
+_BALANCE = re.compile(
+    r"\s*New\s+[A-Za-z\- ]*balance\s+is\s+(?:Ksh|KES)\.?\s?[\d,]+(?:\.\d{1,2})?\.?",
+    re.IGNORECASE,
+)
+
+
+def redact_balance(text: str) -> str:
+    """Return `text` without the "New … balance is Ksh…" sentence (DATA_MAPPING §3.19)."""
+    return _BALANCE.sub("", text).strip()
 
 
 def parse_mpesa_sms(text: str) -> ParsedSms | None:
@@ -161,4 +173,4 @@ def _clean_name(name: str | None) -> str | None:
     return cleaned[:MAX_NAME_LENGTH] or None
 
 
-__all__ = ["ParsedSms", "SmsDirection", "parse_mpesa_sms"]
+__all__ = ["ParsedSms", "SmsDirection", "parse_mpesa_sms", "redact_balance"]

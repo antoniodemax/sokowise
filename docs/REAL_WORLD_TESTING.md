@@ -26,7 +26,7 @@ You do not need to know accounting. If something in the app does not make sense 
 - The first time you open the app after a while, it can take **up to a minute** to wake up. This is a limit of the free test server, not your phone. Please wait and try again if the first page is slow.
 - The **Copilot** (the "ask a question" helper) may say it is not available. That part needs paid credits that are not always on during the test.
 - **Receipt photos** may disappear from the app after we update the test server. Everything you typed in stays.
-- M-Pesa messages you paste stay inside your own business account. Nothing is sent to Safaricom, and SokoWise does not check with Safaricom.
+- M-Pesa messages you paste stay inside your own business account. The app keeps the code, amount, sender name and time; it drops your M-Pesa balance before saving. Nothing is sent to Safaricom, and SokoWise does not check with Safaricom. During the test, the SokoWise team can see the database.
 
 ## What to try
 
@@ -47,7 +47,7 @@ Use your phone. Register with a phone number you can remember. It takes about a 
 13. **Try analytics.** Look at the week and the month. Is this useful?
 14. **Try the Copilot, if it is available.** Ask a question like "How much did I sell today?" or "Who owes me money?".
 15. **Try receipt scanning, if it is available.** Under **Inventory → Scan receipt**, photograph a supplier receipt.
-16. **Try the M-Pesa page.** Under **M-Pesa**, paste a confirmation SMS and see whether the app matches it to a sale. Use a test message, not a real customer's details.
+16. **Try the M-Pesa page.** Under **M-Pesa**, paste a confirmation SMS and see whether the app matches it to a sale. A real message from your own M-Pesa line is fine if you are comfortable with it (see the note above); a made-up one works too.
 
 If you have a helper in the shop, the owner can add them under **Settings → Add staff**. Staff can record sales and repayments but cannot see profit, expenses or change settings.
 
@@ -70,5 +70,5 @@ There is a longer template in `TESTER_FEEDBACK_TEMPLATE.md` if you prefer a form
 
 - If a page looks stuck, wait a minute (the server may be waking up), then pull down to refresh.
 - If you are signed out, sign in again with your phone number and password.
-- If you forget your password, tell us. There is no "forgot password" link yet in this test version.
+- If you forget your password, tap **Forgot password?** on the sign-in page. It sends a code by SMS; during the test the SMS may not arrive yet, so if nothing comes, tell us and we will reset it for you.
 - Tell us what you were doing and what you saw. A screenshot helps.
